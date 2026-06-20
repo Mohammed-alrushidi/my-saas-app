@@ -89,7 +89,7 @@ export async function inviteStaff(
 
       if (updateError) return { success: false, error: updateError.message }
 
-      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/login`
+      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/update-password`
       const { error: reEmailError } = await adminSupabase.auth.resetPasswordForEmail(
         trimmedEmail,
         { redirectTo },
@@ -120,7 +120,7 @@ export async function inviteStaff(
     return { success: false, error: profileError.message }
   }
 
-  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/login`
+  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/update-password`
   const { error: emailError } = await adminSupabase.auth.resetPasswordForEmail(
     trimmedEmail,
     { redirectTo },

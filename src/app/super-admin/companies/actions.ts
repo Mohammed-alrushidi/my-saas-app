@@ -89,7 +89,7 @@ export async function createCompany(formData: FormData) {
 
   // Send password reset email so the admin can set their own password
   await adminSupabase.auth.resetPasswordForEmail(adminEmail, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/login`,
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/update-password`,
   })
 
   revalidatePath("/super-admin/companies")

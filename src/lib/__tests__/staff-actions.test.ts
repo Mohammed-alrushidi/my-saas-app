@@ -106,7 +106,7 @@ describe("inviteStaff", () => {
 
     expect(mockAdminClient.auth.resetPasswordForEmail).toHaveBeenCalledWith(
       "staff@example.com",
-      { redirectTo: expect.stringContaining("/login") },
+      { redirectTo: expect.stringContaining("/update-password") },
     )
   })
 
