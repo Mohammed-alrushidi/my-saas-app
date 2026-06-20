@@ -1,9 +1,9 @@
 import { getProfile } from "@/lib/supabase/queries"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeftToLine, LogOut } from "lucide-react"
-import { signOut } from "@/app/login/actions"
+import { ArrowLeftToLine } from "lucide-react"
 import { SuperAdminSidebarNav } from "./sidebar-nav"
+import { SuperAdminLogoutButton } from "@/components/super-admin-logout-button"
 
 export default async function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const profile = await getProfile()
@@ -41,15 +41,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
               <div className="truncate text-sm font-medium">{fullName || "User"}</div>
               <div className="truncate text-xs text-muted-foreground">Super Admin</div>
             </div>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                aria-label="Sign out"
-              >
-                <LogOut size={16} aria-hidden="true" />
-              </button>
-            </form>
+            <SuperAdminLogoutButton />
           </div>
           {companyName && (
             <div className="mt-2 truncate px-1 text-xs text-muted-foreground">{companyName}</div>

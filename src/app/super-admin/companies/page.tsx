@@ -1,6 +1,7 @@
 import { getProfile, getCompanies } from "@/lib/supabase/queries"
 import { redirect } from "next/navigation"
-import { createCompany, toggleCompanyStatus } from "./actions"
+import { createCompany } from "./actions"
+import { CompanyToggleButton } from "@/components/company-toggle-button"
 
 export default async function CompaniesPage(props: {
   searchParams: Promise<{ error?: string; success?: string; created?: string }>
@@ -128,21 +129,10 @@ export default async function CompaniesPage(props: {
                   </div>
                 </div>
 
-                <form>
-                  <input type="hidden" name="company_id" value={company.id} />
-                  <input type="hidden" name="is_active" value={(!company.is_active).toString()} />
-                  <button
-                    type="submit"
-                    formAction={toggleCompanyStatus}
-                    className={`rounded-md px-3 py-1.5 text-xs font-medium ${
-                      company.is_active
-                        ? "bg-red-50 text-red-600 hover:bg-red-100"
-                        : "bg-green-50 text-green-600 hover:bg-green-100"
-                    }`}
-                  >
-                    {company.is_active ? "Deactivate" : "Activate"}
-                  </button>
-                </form>
+                <CompanyToggleButton
+                  companyId={company.id}
+                  isActive={company.is_active}
+                />
               </div>
             ))}
           </div>
