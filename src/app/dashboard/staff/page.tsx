@@ -29,7 +29,7 @@ export default function StaffPage() {
     if (result.success) {
       setEmail("")
       setFullName("")
-      setNotification({ type: "success", message: "Staff invited" })
+      setNotification({ type: "success", message: "Invitation sent. The staff member will receive an email to set their password." })
       fetchStaff()
     } else {
       setNotification({ type: "error", message: result.error ?? "Failed to invite" })

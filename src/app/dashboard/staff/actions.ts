@@ -89,6 +89,14 @@ export async function inviteStaff(
 
       if (updateError) return { success: false, error: updateError.message }
 
+      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/login`
+      const { error: reEmailError } = await adminSupabase.auth.resetPasswordForEmail(
+        trimmedEmail,
+        { redirectTo },
+      )
+
+      if (reEmailError) return { success: false, error: reEmailError.message }
+
       revalidatePath("/dashboard/staff")
       return { success: true }
     }
@@ -98,9 +106,7 @@ export async function inviteStaff(
 
   if (!authUser?.user) return { success: false, error: "Failed to create user" }
 
-  const supabase = await createClient()
-
-  const { error: profileError } = await supabase
+  const { error: profileError } = await adminSupabase
     .from("profiles")
     .update({
       company_id: profile.company_id,
@@ -109,7 +115,21 @@ export async function inviteStaff(
     })
     .eq("id", authUser.user.id)
 
-  if (profileError) return { success: false, error: profileError.message }
+  if (profileError) {
+    await adminSupabase.auth.admin.deleteUser(authUser.user.id).catch(() => {})
+    return { success: false, error: profileError.message }
+  }
+
+  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/login`
+  const { error: emailError } = await adminSupabase.auth.resetPasswordForEmail(
+    trimmedEmail,
+    { redirectTo },
+  )
+
+  if (emailError) {
+    await adminSupabase.auth.admin.deleteUser(authUser.user.id).catch(() => {})
+    return { success: false, error: emailError.message }
+  }
 
   revalidatePath("/dashboard/staff")
   return { success: true }
