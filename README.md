@@ -1,36 +1,284 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Insurance Renewal & Engagement SaaS
 
-## Getting Started
+Multi-tenant SaaS platform for insurance companies to upload Excel customer records, track policy expiries and birthdays, and send timely WhatsApp reminders and greetings through an opt-out compliant system.
 
-First, run the development server:
+---
+
+## Tech Stack
+
+- **Framework:** Next.js 16 (App Router)
+- **Auth & Database:** Supabase (Postgres + auth)
+- **Styling:** Tailwind CSS + shadcn/ui + Base UI
+- **Excel Parsing:** xlsx
+- **WhatsApp:** Twilio WhatsApp Sandbox (production WABA postponed)
+- **Testing:** vitest
+- **Language:** TypeScript
+
+---
+
+## Main Features Completed
+
+- Excel upload with column validation and error reporting
+- Company Admin dashboard (counts, expiries, birthdays, message stats, quick actions, alerts)
+- Customer records list with search and filter
+- Upcoming expiries view (30/14/7 day filters)
+- Birthdays view (today, this month)
+- Editable message templates with variables (renewal, birthday, broadcast)
+- Manual test message sending
+- Broadcast/campaign flow (compose, choose audience, preview, confirm)
+- Message history with expandable details and filters
+- Responsive sidebar with role-gated navigation
+- Customer list pagination (URL-based, 50 per page)
+- Messages Load More (client-side, auto-hides when no more)
+- Opt-out handling (Reply STOP, block future sends)
+- Multi-role access (Super Admin, Company Admin, Staff)
+- Dashboard empty-state placeholders (expiries/birthdays cards stay visible and clear when no data)
+- Automated Cron scheduler for renewal reminders and birthday greetings (Asia/Muscat timezone, exact-stage matching, per-day dedupe)
+- Server-side role checks for all admin actions (super_admin and company_admin gates)
+- Super Admin platform dashboard with aggregate metrics (total companies, messages, imports, recent activity)
+- Super Admin sidebar navigation with active link highlighting
+
+---
+
+## Setup
+
+### Prerequisites
+
+- Node.js 18+
+- npm
+- Supabase account (free tier)
+- Twilio account (for WhatsApp Sandbox)
+
+### Local Setup
+
+```bash
+# 1. Clone and install
+npm install
+
+# 2. Copy environment variables
+cp .env.example .env.local
+# Then fill in your values (see table below)
+
+# 3. Run database migrations
+# Apply migrations from supabase/ directory via Supabase dashboard or CLI
+
+# 4. Start dev server
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) to see the app.
+
+---
+
+## Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | `https://xxxxx.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key | `[stored in .env.local]` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only) | `[stored in .env.local]` |
+| `TWILIO_ACCOUNT_SID` | Twilio account SID | `[stored in .env.local]` |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token | `[stored in .env.local]` |
+| `TWILIO_WHATSAPP_NUMBER` | Twilio WhatsApp sender number | `+14155238886` (sandbox) |
+| `SITE_URL` | Server-side URL for Twilio delivery callbacks | `http://localhost:3000` |
+| `NEXT_PUBLIC_SITE_URL` | Frontend URL for password reset redirects | `http://localhost:3000` |
+| `CRON_SECRET` | Secret token for cron endpoint auth | `[random string, e.g. openssl rand -hex 32]` |
+
+Never commit `.env.local` or expose these values.
+
+---
+
+## Supabase Setup
+
+1. Create a new Supabase project.
+2. Run the SQL migrations in the `supabase/` directory to create tables and RLS policies.
+3. Enable Email + Password authentication in Supabase Auth settings.
+4. Create the first company and user via the Supabase dashboard or seed script.
+
+---
+
+## Twilio WhatsApp Sandbox Notes
+
+This project uses the **Twilio WhatsApp Sandbox** for development and testing.
+
+**Limitations:**
+- Recipients must send a WhatsApp opt-in message to the sandbox number before receiving messages.
+- Sandbox sessions expire after 72 hours of inactivity (7 days with activity).
+- Works with only a handful of test numbers.
+- Messages include "Sent from a Twilio Sandbox" prefix.
+
+**Production path:**
+For real customer messaging, upgrade to a production WhatsApp Business Account (WABA) through a Meta BSP. This requires business verification, WABA approval, and pre-approved message templates. This is currently postponed.
+
+---
+
+## How to Run Locally
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The app runs at `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scheduler (Cron)
 
-## Learn More
+Automated renewal reminders and birthday greetings via a cron endpoint.
 
-To learn more about Next.js, take a look at the following resources:
+### Endpoint
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+GET /api/cron/scheduler
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Authentication
 
-## Deploy on Vercel
+Requires the `CRON_SECRET` environment variable. Pass the secret via one of:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Header: `x-cron-secret: YOUR_CRON_SECRET`
+- Header: `Authorization: Bearer YOUR_CRON_SECRET`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Returns `401 Unauthorized` if the secret is missing or wrong. Returns `500` if the scheduler itself throws.
+
+### What It Does
+
+Each invocation:
+
+1. Fetches all active companies.
+2. For each active company with enabled `reminder_settings`:
+   - **Renewal reminders:** For each configured stage (e.g. 30, 14, 7 days before expiry), finds customers whose `policy_expiry_date` matches exactly `today + days` (Asia/Muscat local date). Excludes opted-out and invalid-number customers. Deduplicates against messages already sent today.
+   - **Birthday greetings:** Finds customers whose `driver_dob` month/day matches today's month/day (Asia/Muscat local date). Excludes opted-out and invalid-number customers. Deduplicates against messages already sent today.
+3. Inserts messages into the `messages` table for all eligible customers.
+
+**Deduplication:** Scoped to the current Asia/Muscat local day. Old messages from previous days or years do not block today's run. Running the endpoint multiple times on the same day does not duplicate messages.
+
+**Missing template resilience:** If no template exists for a message type (renewal or birthday), that type is skipped for the company. The other type still processes. The scheduler does not crash.
+
+### MVP Note
+
+Messages are inserted with `status = "sent"`, but **no real WhatsApp provider is called yet**. This validates the scheduling logic, deduplication, and data pipeline end-to-end. Provider integration is the next slice.
+
+### Local Testing
+
+```powershell
+# PowerShell
+$headers = @{ "x-cron-secret" = "your-secret" }
+Invoke-RestMethod -Uri "http://localhost:3000/api/cron/scheduler" -Headers $headers
+```
+
+```bash
+# curl
+curl -H "x-cron-secret: your-secret" http://localhost:3000/api/cron/scheduler
+```
+
+### Production Notes
+
+- Set `CRON_SECRET` in your hosting environment before enabling the cron trigger.
+- Configure your cron platform to call `GET /api/cron/scheduler` once daily with the secret.
+- A good cron schedule is daily at 8:00 AM Asia/Muscat time (`0 4 * * *` UTC, accounting for +04:00 offset).
+
+### Post-Deployment Verification
+
+After deployment, verify by running the endpoint manually once with `CRON_SECRET` and checking the messages history page. Confirm that:
+- Renewal reminders appear for customers whose policies expire according to the configured stages.
+- Birthday greetings appear for customers with today's birthday (Asia/Muscat local date).
+- No duplicate messages were created if the endpoint was called multiple times.
+
+---
+
+## Build
+
+```bash
+npm run build
+```
+
+Compiles clean. Run this before pushing to verify no errors.
+
+---
+
+## Test
+
+```bash
+npm test
+```
+
+Uses vitest. **99 tests across 11 files:**
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `validation.test.ts` | 19 | Excel upload parser — row limits, column validation, error reporting |
+| `messages-actions.test.ts` | 19 | Renewal preview/confirm, pagination & filters, Load More edge cases, "all" bypass, birthday preview/confirm, role rejection |
+| `broadcast-actions.test.ts` | 16 | Validation, role rejection, server-side eligible-only guard, send success, role-gated template loading |
+| `staff-actions.test.ts` | 3 | inviteStaff / deactivateStaff / activateStaff — non-admin rejection |
+| `templates-actions.test.ts` | 2 | saveTemplate / resetTemplate — non-admin rejection |
+| `settings-actions.test.ts` | 2 | saveSettings / resetSettings — non-admin rejection |
+| `opt-outs-actions.test.ts` | 2 | addOptOut / removeOptOut — non-admin rejection |
+| `upload-actions.test.ts` | 7 | parseExcel/deleteImport role rejection + confirmImport: role, happy path, duplicate, opt-out, invalid row |
+| `scheduler.test.ts` | 16 | No companies, exact-stage matching, stage isolation, birthdays, cross-day dedup, same-day dedup, opted-out exclusion, missing templates, inactive settings, multi-company, API route auth |
+| `super-admin-actions.test.ts` | 8 | Super admin create/toggle company with role rejection |
+| `super-admin-dashboard.test.ts` | 5 | Dashboard data function with role rejection and PII-free data shape |
+
+---
+
+## Safety Rules
+
+> **Do not send test or real WhatsApp messages unless explicitly approved by the user.**
+> All credentials are stored in `.env.local` — never hardcode or commit them.
+> Validate all user inputs.
+> Check user permissions before showing or changing data.
+> Do not expose API keys, passwords, or tokens in frontend code.
+
+---
+
+## Basic Verification Checklist
+
+- [ ] Login page loads and authentication works
+- [ ] Upload an Excel file with valid and invalid rows — errors are shown clearly
+- [ ] Dashboard shows correct counts and upcoming items
+- [ ] Customer list displays records with search and filter
+- [ ] Message templates can be edited and saved
+- [ ] Send a test message to a sandbox-approved number — check history
+- [ ] Broadcast flow: compose audience, preview, confirm
+- [ ] Message history shows expandable details and filters work
+- [ ] Responsive sidebar works on mobile viewport
+- [ ] Opted-out numbers do not receive messages
+
+---
+
+## Production Readiness
+
+### Done
+- [x] Super Admin platform dashboard with aggregate metrics
+- [x] Server-side role checks for all admin actions
+- [x] `.env.example` with documented variables and placeholders
+- [x] `docs/deployment.md` — full deployment and rollback checklist
+- [x] README updated with current test count (99), correct env vars, and production instructions
+- [x] All 99 tests passing, build clean
+
+### Remaining before production
+- [ ] **Twilio WABA production number** — requires Meta business verification, WABA approval, and template pre-approval
+- [ ] **Scheduler real provider call** — current scheduler marks messages as "sent" without calling WhatsApp
+- [ ] **Page-level guards** — `/dashboard/upload`, `/dashboard/broadcast`, `/dashboard/staff` lack server-side page guards (server actions are protected)
+- [ ] **UI-level polish** — consider empty states, loading skeletons, error boundaries
+- [ ] **Monitoring** — add error tracking (Sentry, etc.) and uptime monitoring
+
+> **Important:** Do not enable the cron job on production data until the WhatsApp provider call is implemented (see `docs/deployment.md` §5).
+
+---
+
+## Current Roadmap
+
+1. **Testing: largely complete** — 99 tests across 11 files covering all flows plus role rejection and super admin dashboard.
+2. **Scheduler MVP: complete** — Cron endpoint for renewal reminders and birthday greetings (Asia/Muscat timezone, exact-stage matching, dedupe, opted-out exclusion). Messages inserted as `status="sent"` — no real WhatsApp provider call yet.
+3. **Scheduler real provider integration** — Replace mock "sent" status with actual WhatsApp API call per message.
+4. **Super Admin page-level guards** — Add server-side page guards to `/dashboard/upload`, `/dashboard/broadcast`, `/dashboard/staff`.
+5. **Production WhatsApp/WABA** — Remains postponed. Requires Meta BSP, business verification, WABA approval, and template pre-approval.
+
+---
+
+## Project Links
+
+- [`MY SaaS 2.MD`](./MY%20SaaS%202.MD) — Continuation and status document
+- [`AGENTS.md`](./AGENTS.md) — Project instructions and coding rules
+- [`docs/PRD.md`](./docs/PRD.md) — Product requirements document

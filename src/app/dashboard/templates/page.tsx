@@ -1,0 +1,214 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { getTemplates, saveTemplate, resetTemplate } from "./actions"
+import { getCurrentRole } from "../role-actions"
+import type { TemplateData } from "./actions"
+
+const VARIABLES: { variable: string; description: string; types: string[] }[] = [
+  { variable: "{{customer_name}}", description: "Customer's full name", types: ["renewal", "birthday", "broadcast"] },
+  { variable: "{{company_name}}", description: "Insurance company name", types: ["renewal", "birthday", "broadcast"] },
+  { variable: "{{veh_make_model}}", description: "Vehicle make and model", types: ["renewal"] },
+  { variable: "{{policy_expiry_date}}", description: "Policy expiry date", types: ["renewal"] },
+  { variable: "{{days_remaining}}", description: "Days until expiry", types: ["renewal"] },
+  { variable: "{{new_premium_vat_amount}}", description: "Renewal premium amount", types: ["renewal"] },
+]
+
+const TYPE_LABELS: Record<string, string> = {
+  renewal: "Renewal Reminder",
+  birthday: "Birthday Greeting",
+  broadcast: "Broadcast / Campaign",
+}
+
+type Notification = { type: "success" | "error"; message: string } | null
+
+function TemplateCard({
+  template,
+  notification,
+  onNotificationClear,
+  isAdmin,
+}: {
+  template: TemplateData
+  notification: Notification
+  onNotificationClear: () => void
+  isAdmin: boolean
+}) {
+  const [body, setBody] = useState(template.body)
+  const [name, setName] = useState(template.name)
+  const [saving, setSaving] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [localNotification, setLocalNotification] = useState<Notification>(null)
+
+  const showNotification = notification && template.id.startsWith(notification.message)
+    ? notification
+    : localNotification
+
+  useEffect(() => {
+    setBody(template.body)
+    setName(template.name)
+  }, [template.body, template.name])
+
+  async function handleSave() {
+    setSaving(true)
+    const result = await saveTemplate(template.id, body, name)
+    setSaving(false)
+    if (result.success) {
+      setLocalNotification({ type: "success", message: "Saved" })
+    } else {
+      setLocalNotification({ type: "error", message: result.error ?? "Failed to save" })
+    }
+  }
+
+  async function handleReset() {
+    if (!confirm("Reset this template to the default?")) return
+    setResetting(true)
+    const result = await resetTemplate(template.template_type)
+    setResetting(false)
+    if (result.success) {
+      setLocalNotification({ type: "success", message: "Reset to default" })
+    } else {
+      setLocalNotification({ type: "error", message: result.error ?? "Failed to reset" })
+    }
+  }
+
+  return (
+    <div className="rounded-lg border p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">{TYPE_LABELS[template.template_type]}</h2>
+          {template.is_default && (
+            <span className="inline-block mt-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
+              Default
+            </span>
+          )}
+        </div>
+        <span className="rounded bg-gray-100 px-2 py-0.5 text-xs capitalize text-gray-600">
+          {template.template_type}
+        </span>
+      </div>
+
+      <label className="mb-1 block text-sm font-medium text-gray-700">Template Name</label>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        disabled={!isAdmin}
+        className="mb-3 w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+      />
+
+      <label className="mb-1 block text-sm font-medium text-gray-700">Message Body</label>
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        disabled={!isAdmin}
+        rows={6}
+        className="mb-3 w-full rounded border px-3 py-2 text-sm font-mono disabled:bg-gray-100 disabled:text-gray-500"
+      />
+
+      {isAdmin && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+          <button
+            onClick={handleReset}
+            disabled={resetting}
+            className="rounded border px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+          >
+            {resetting ? "Resetting..." : "Reset to Default"}
+          </button>
+        </div>
+      )}
+      {showNotification && (
+        <span
+          className={`text-sm ${showNotification.type === "success" ? "text-green-600" : "text-red-600"}`}
+        >
+          {showNotification.message}
+        </span>
+      )}
+    </div>
+  )
+}
+
+export default function TemplatesPage() {
+  const [templates, setTemplates] = useState<TemplateData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [notification, setNotification] = useState<Notification>(null)
+
+  useEffect(() => {
+    Promise.all([getTemplates(), getCurrentRole()]).then(([data, role]) => {
+      setTemplates(data)
+      setIsAdmin(role === "company_admin")
+      setLoading(false)
+    })
+  }, [])
+
+  if (loading) {
+    return <div className="p-6 text-gray-500">Loading templates...</div>
+  }
+
+  if (templates.length === 0) {
+    return (
+      <div className="p-6">
+        <h1 className="mb-2 text-2xl font-bold">Message Templates</h1>
+        <p className="text-gray-500">No templates found. Please run the database migration.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-6">
+      <h1 className="mb-2 text-2xl font-bold">Message Templates</h1>
+      <p className="mb-6 text-gray-500">
+        Edit the message templates used for sending WhatsApp messages to customers.
+      </p>
+
+      <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {templates.map((t) => (
+          <TemplateCard
+            key={t.id}
+            template={t}
+            notification={notification}
+            onNotificationClear={() => setNotification(null)}
+            isAdmin={isAdmin}
+          />
+        ))}
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <h2 className="mb-3 text-lg font-semibold">Available Variables</h2>
+        <p className="mb-3 text-sm text-gray-500">
+          Use these variables in your message body. They will be replaced with actual customer data when the message
+          is sent.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="pb-2 pr-4 font-medium">Variable</th>
+                <th className="pb-2 pr-4 font-medium">Description</th>
+                <th className="pb-2 font-medium">Available In</th>
+              </tr>
+            </thead>
+            <tbody>
+              {VARIABLES.map((v) => (
+                <tr key={v.variable} className="border-b last:border-0">
+                  <td className="py-2 pr-4 font-mono text-blue-600">{v.variable}</td>
+                  <td className="py-2 pr-4 text-gray-600">{v.description}</td>
+                  <td className="py-2 text-gray-600">
+                    {v.types.map((t) => TYPE_LABELS[t]).join(", ")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}

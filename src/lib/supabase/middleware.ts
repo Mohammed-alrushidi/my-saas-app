@@ -25,19 +25,64 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth") &&
-    request.nextUrl.pathname !== "/"
-  ) {
+  const publicPaths = ["/login", "/sign-up", "/auth", "/api"]
+  const isPublicPath = publicPaths.some((p) =>
+    request.nextUrl.pathname.startsWith(p),
+  )
+
+  if (!user) {
+    if (!isPublicPath && request.nextUrl.pathname !== "/") {
+      const url = request.nextUrl.clone()
+      url.pathname = "/login"
+      return NextResponse.redirect(url)
+    }
+    return supabaseResponse
+  }
+
+  const profile = await supabase
+    .from("profiles")
+    .select("role, is_active")
+    .eq("id", user.id)
+    .single()
+    .then((r) => r.data)
+
+  if (!profile) {
+    if (!request.nextUrl.pathname.startsWith("/login")) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/login"
+      url.searchParams.set("error", "profile_missing")
+      return NextResponse.redirect(url)
+    }
+    return supabaseResponse
+  }
+
+  if (!profile.is_active) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
+    url.searchParams.set("error", "deactivated")
     return NextResponse.redirect(url)
+  }
+
+  if (isPublicPath || request.nextUrl.pathname === "/") {
+    if (profile) {
+      if (profile.role === "super_admin" && !request.nextUrl.pathname.startsWith("/super-admin")) {
+        const url = request.nextUrl.clone()
+        url.pathname = "/super-admin/companies"
+        return NextResponse.redirect(url)
+      }
+      if (profile.role === "company_admin" && !request.nextUrl.pathname.startsWith("/dashboard")) {
+        const url = request.nextUrl.clone()
+        url.pathname = "/dashboard"
+        return NextResponse.redirect(url)
+      }
+      if (profile.role === "staff" && !request.nextUrl.pathname.startsWith("/dashboard")) {
+        const url = request.nextUrl.clone()
+        url.pathname = "/dashboard"
+        return NextResponse.redirect(url)
+      }
+    }
   }
 
   return supabaseResponse
