@@ -4,26 +4,47 @@ import { NextResponse, type NextRequest } from "next/server"
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
+  const _supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const _anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  console.log(JSON.stringify({
+    diag: "mw-env",
+    hasUrl: Boolean(_supabaseUrl),
+    hasKey: Boolean(_anonKey),
+    urlValid: typeof _supabaseUrl === "string" && _supabaseUrl.startsWith("https://") && _supabaseUrl.includes(".supabase.co"),
+    keyPlausible: typeof _anonKey === "string" && _anonKey.length > 20,
+    path: request.nextUrl.pathname,
+  }))
+
+  const supabase = (() => {
+    try {
+      return createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() {
+              return request.cookies.getAll()
+            },
+            setAll(cookiesToSet) {
+              cookiesToSet.forEach(({ name, value }) =>
+                request.cookies.set(name, value),
+              )
+              supabaseResponse = NextResponse.next({ request })
+              cookiesToSet.forEach(({ name, value, options }) =>
+                supabaseResponse.cookies.set(name, value, options),
+              )
+            },
+          },
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          )
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          )
-        },
-      },
-    },
-  )
+      )
+    } catch (e) {
+      console.error(JSON.stringify({
+        diag: "mw-env-err",
+        error: e instanceof Error ? e.message : String(e),
+      }))
+      throw e
+    }
+  })()
 
   const { data: { user } } = await supabase.auth.getUser()
 
