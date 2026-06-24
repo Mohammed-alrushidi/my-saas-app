@@ -1,12 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
-
-export const COMPANY_PERMISSIONS = [
-  "templates:edit",
-  "reminder_settings:edit",
-  "broadcast:create",
-] as const
-
-export type CompanyPermission = typeof COMPANY_PERMISSIONS[number]
+import { COMPANY_PERMISSIONS, type CompanyPermission } from "@/lib/permission-types"
+export { COMPANY_PERMISSIONS }
+export type { CompanyPermission }
 
 export interface ProfileLike {
   id: string

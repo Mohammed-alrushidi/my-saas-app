@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Ban,
   Settings,
+  KeyRound,
   LogOut,
   Menu,
   X,
@@ -44,6 +45,7 @@ const NAV_ITEMS: {
   { href: "/dashboard/messages", label: "Message History", icon: MessageSquare },
   { href: "/dashboard/opt-outs", label: "Opt-Outs", icon: Ban },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard/permissions", label: "Permission Requests", icon: KeyRound },
 ]
 
 export default function DashboardSidebar({ role, fullName, companyName }: SidebarProps) {
