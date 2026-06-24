@@ -10,6 +10,7 @@ const mockChain: any = {
   eq: vi.fn(() => mockChain),
   order: vi.fn(() => Promise.resolve({ data: [] })),
   insert: vi.fn(() => Promise.resolve({ error: null })),
+  update: vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) })),
   maybeSingle: vi.fn(() => Promise.resolve(mockMaybeSingle)),
 }
 
@@ -29,7 +30,13 @@ vi.mock("@/lib/supabase/queries", () => ({
 }))
 
 import { can, COMPANY_PERMISSIONS } from "@/lib/supabase/permissions"
-import { createPermissionRequest, getMyPermissionRequests } from "@/app/dashboard/permissions/actions"
+import {
+  createPermissionRequest,
+  getMyPermissionRequests,
+  getCompanyPermissionRequests,
+  approvePermissionRequest,
+  rejectPermissionRequest,
+} from "@/app/dashboard/permissions/actions"
 import { revalidatePath } from "next/cache"
 
 const companyAdmin = {
@@ -293,5 +300,204 @@ describe("getMyPermissionRequests", () => {
     expect(mockChain.from).toHaveBeenCalledWith("permission_requests")
     expect(mockChain.eq).toHaveBeenCalledWith("staff_id", "staff-id")
     expect(mockChain.order).toHaveBeenCalledWith("created_at", { ascending: false })
+  })
+})
+
+describe("getCompanyPermissionRequests", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockChain.order = vi.fn(() => Promise.resolve({ data: [] }))
+  })
+
+  it("returns null for unauthenticated user", async () => {
+    mockGetProfile.mockReturnValueOnce(null)
+    const result = await getCompanyPermissionRequests()
+    expect(result).toBeNull()
+  })
+
+  it("returns null for staff role", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "staff-id", company_id: "company-a", role: "staff", is_active: true })
+    const result = await getCompanyPermissionRequests()
+    expect(result).toBeNull()
+  })
+
+  it("returns null for inactive admin", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: false })
+    const result = await getCompanyPermissionRequests()
+    expect(result).toBeNull()
+  })
+
+  it("returns null for admin with no company", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: null, role: "company_admin", is_active: true })
+    const result = await getCompanyPermissionRequests()
+    expect(result).toBeNull()
+  })
+
+  it("splits requests into pending and reviewed arrays with staff names", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    const mockData = [
+      { id: "1", permission: "templates:edit", status: "pending", reason: "Need to edit", staff_id: "staff-1", company_id: "company-a", reviewed_by: null, reviewed_at: null, review_note: null, created_at: "2026-06-24T10:00:00Z", profiles: { full_name: "Staff One" } },
+      { id: "2", permission: "broadcast:create", status: "approved", reason: "Need to broadcast", staff_id: "staff-2", company_id: "company-a", reviewed_by: "admin-id", reviewed_at: "2026-06-23T10:00:00Z", review_note: "Looks good", created_at: "2026-06-22T10:00:00Z", profiles: { full_name: "Staff Two" } },
+    ]
+    mockChain.order = vi.fn(() => Promise.resolve({ data: mockData }))
+
+    const result = await getCompanyPermissionRequests()
+    expect(result).not.toBeNull()
+    expect(result!.pending).toHaveLength(1)
+    expect(result!.pending[0].id).toBe("1")
+    expect(result!.pending[0].staff_name).toBe("Staff One")
+    expect(result!.reviewed).toHaveLength(1)
+    expect(result!.reviewed[0].id).toBe("2")
+    expect(result!.reviewed[0].staff_name).toBe("Staff Two")
+    expect(result!.reviewed[0].review_note).toBe("Looks good")
+  })
+})
+
+describe("approvePermissionRequest", () => {
+  const pendingRequest = {
+    id: "req-1",
+    company_id: "company-a",
+    staff_id: "staff-id",
+    permission: "templates:edit",
+    status: "pending",
+    reason: "I need to edit templates",
+    profiles: { full_name: "Staff User", company_id: "company-a", role: "staff", is_active: true },
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMaybeSingle = { data: null }
+    mockChain.maybeSingle = vi.fn(() => Promise.resolve(mockMaybeSingle))
+    mockChain.update = vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) }))
+    mockChain.insert = vi.fn(() => Promise.resolve({ error: null }))
+  })
+
+  it("rejects non-admin", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "staff-id", company_id: "company-a", role: "staff", is_active: true })
+    const result = await approvePermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("Only company admins")
+  })
+
+  it("rejects cross-company request", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.maybeSingle = vi.fn(() => Promise.resolve({ data: { ...pendingRequest, company_id: "company-b" } }))
+    const result = await approvePermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("does not belong to your company")
+  })
+
+  it("rejects non-pending request", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.maybeSingle = vi.fn(() => Promise.resolve({ data: { ...pendingRequest, status: "approved" } }))
+    const result = await approvePermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("no longer pending")
+  })
+
+  it("rejects for inactive staff", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    const inactiveProfiles = { full_name: "Staff User", company_id: "company-a", role: "staff", is_active: false }
+    mockChain.maybeSingle = vi.fn(() => Promise.resolve({ data: { ...pendingRequest, profiles: inactiveProfiles } }))
+    const result = await approvePermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("inactive staff member")
+  })
+
+  it("rejects if active grant already exists", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.maybeSingle = vi.fn()
+      .mockResolvedValueOnce({ data: pendingRequest })
+      .mockResolvedValueOnce({ data: { id: "grant-1" } })
+    const result = await approvePermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("already has this permission")
+  })
+
+  it("handles duplicate grant on insert gracefully", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.maybeSingle = vi.fn()
+      .mockResolvedValueOnce({ data: pendingRequest })
+      .mockResolvedValueOnce({ data: null })
+    mockChain.insert = vi.fn(() => Promise.resolve({ error: { code: "23505", message: "duplicate key" } }))
+    const result = await approvePermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("already has this permission")
+  })
+
+  it("rejects when update fails after request load", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.maybeSingle = vi.fn()
+      .mockResolvedValueOnce({ data: pendingRequest })
+      .mockResolvedValueOnce({ data: null })
+    mockChain.update = vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: { message: "DB error" } })) }))
+    const result = await approvePermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("DB error")
+  })
+
+  it("rejects when insert fails after request update", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.maybeSingle = vi.fn()
+      .mockResolvedValueOnce({ data: pendingRequest })
+      .mockResolvedValueOnce({ data: null })
+    mockChain.insert = vi.fn(() => Promise.resolve({ error: { message: "Insert failed" } }))
+    const result = await approvePermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("Insert failed")
+  })
+
+  it("approves successfully and creates grant", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.maybeSingle = vi.fn()
+      .mockResolvedValueOnce({ data: pendingRequest })
+      .mockResolvedValueOnce({ data: null })
+    const result = await approvePermissionRequest("req-1", "Looks good")
+    expect(result.success).toBe(true)
+    expect(mockChain.from).toHaveBeenCalledWith("staff_permission_grants")
+    expect(mockChain.insert).toHaveBeenCalled()
+    expect(revalidatePath).toHaveBeenCalledWith("/dashboard/permissions")
+  })
+})
+
+describe("rejectPermissionRequest", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMaybeSingle = { data: null }
+    mockChain.maybeSingle = vi.fn(() => Promise.resolve(mockMaybeSingle))
+    mockChain.update = vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) }))
+    mockChain.insert = vi.fn(() => Promise.resolve({ error: null }))
+  })
+
+  it("rejects non-admin", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "staff-id", company_id: "company-a", role: "staff", is_active: true })
+    const result = await rejectPermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("Only company admins")
+  })
+
+  it("rejects cross-company request", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.maybeSingle = vi.fn(() => Promise.resolve({ data: { id: "req-1", company_id: "company-b", status: "pending" } }))
+    const result = await rejectPermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("does not belong to your company")
+  })
+
+  it("rejects non-pending request", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.maybeSingle = vi.fn(() => Promise.resolve({ data: { id: "req-1", company_id: "company-a", status: "approved" } }))
+    const result = await rejectPermissionRequest("req-1")
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("no longer pending")
+  })
+
+  it("rejects successfully with no grant created", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.maybeSingle = vi.fn(() => Promise.resolve({ data: { id: "req-1", company_id: "company-a", status: "pending" } }))
+    const result = await rejectPermissionRequest("req-1", "Not needed")
+    expect(result.success).toBe(true)
+    expect(mockChain.from).not.toHaveBeenCalledWith("staff_permission_grants")
+    expect(revalidatePath).toHaveBeenCalledWith("/dashboard/permissions")
   })
 })

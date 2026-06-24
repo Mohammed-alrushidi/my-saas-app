@@ -1,7 +1,8 @@
 import { getProfile } from "@/lib/supabase/queries"
 import { redirect } from "next/navigation"
-import { getMyPermissionRequests } from "./actions"
+import { getMyPermissionRequests, getCompanyPermissionRequests } from "./actions"
 import PermissionRequestForm from "./permission-request-form"
+import AdminRequestList from "./admin-request-list"
 
 export default async function PermissionsPage() {
   const profile = await getProfile()
@@ -16,16 +17,24 @@ export default async function PermissionsPage() {
     requests = await getMyPermissionRequests()
   }
 
+  const companyRequests = isAdmin ? await getCompanyPermissionRequests() : null
+
   return (
     <div className="mx-auto max-w-2xl space-y-8 p-4 sm:p-6">
       <h1 className="text-2xl font-bold">Permission Requests</h1>
 
       {isStaff && <PermissionRequestForm />}
 
-      {isAdmin && (
+      {isAdmin && companyRequests && (
+        <AdminRequestList
+          initialPending={companyRequests.pending}
+          initialReviewed={companyRequests.reviewed}
+        />
+      )}
+
+      {isAdmin && !companyRequests && (
         <div className="rounded-lg border bg-blue-50 p-4 text-sm text-blue-800">
           Company admins already have these permissions.
-          Approval workflow will be added in Phase 3.
         </div>
       )}
 
