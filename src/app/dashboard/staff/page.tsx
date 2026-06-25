@@ -1,25 +1,33 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { listStaff, inviteStaff, deactivateStaff, activateStaff } from "./actions"
+import { listStaff, inviteStaff, deactivateStaff, activateStaff, getCompanyStaffGrants } from "./actions"
 import type { StaffMember } from "./actions"
+import StaffPermissionGrants from "./staff-permission-grants"
+import type { StaffPermissionGrant } from "./staff-permission-grants"
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([])
+  const [grantsByStaff, setGrantsByStaff] = useState<Record<string, StaffPermissionGrant[]>>({})
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState("")
   const [fullName, setFullName] = useState("")
   const [inviting, setInviting] = useState(false)
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
-  const fetchStaff = useCallback(async () => {
+  const refreshData = useCallback(async () => {
     setLoading(true)
-    const data = await listStaff()
-    setStaff(data)
+    const [staffData, grantsData] = await Promise.all([listStaff(), getCompanyStaffGrants()])
+    setStaff(staffData)
+    const map: Record<string, StaffPermissionGrant[]> = {}
+    for (const s of grantsData) {
+      map[s.id] = s.grants
+    }
+    setGrantsByStaff(map)
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchStaff() }, [fetchStaff])
+  useEffect(() => { refreshData() }, [refreshData])
 
   async function handleInvite() {
     if (!email.trim() || !fullName.trim()) return
@@ -30,7 +38,7 @@ export default function StaffPage() {
       setEmail("")
       setFullName("")
       setNotification({ type: "success", message: "Invitation sent. The staff member will receive an email to set their password." })
-      fetchStaff()
+      refreshData()
     } else {
       setNotification({ type: "error", message: result.error ?? "Failed to invite" })
     }
@@ -41,7 +49,7 @@ export default function StaffPage() {
     const result = await deactivateStaff(userId)
     if (result.success) {
       setNotification({ type: "success", message: "Staff deactivated" })
-      fetchStaff()
+      refreshData()
     } else {
       setNotification({ type: "error", message: result.error ?? "Failed to deactivate" })
     }
@@ -52,7 +60,7 @@ export default function StaffPage() {
     const result = await activateStaff(userId)
     if (result.success) {
       setNotification({ type: "success", message: "Staff reactivated" })
-      fetchStaff()
+      refreshData()
     } else {
       setNotification({ type: "error", message: result.error ?? "Failed to reactivate" })
     }
@@ -121,6 +129,7 @@ export default function StaffPage() {
                 <th className="px-4 py-3 font-medium">Name</th>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Permissions</th>
                 <th className="px-4 py-3 font-medium">Invited</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
@@ -140,6 +149,14 @@ export default function StaffPage() {
                     >
                       {s.is_active ? "Active" : "Inactive"}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <StaffPermissionGrants
+                      grants={grantsByStaff[s.id] ?? []}
+                      staffName={s.full_name ?? s.email ?? ""}
+                      staffIsActive={s.is_active}
+                      onRevoke={refreshData}
+                    />
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {new Date(s.created_at).toLocaleDateString()}
