@@ -26,6 +26,7 @@ interface SidebarProps {
   role: string
   fullName?: string | null
   companyName?: string | null
+  canPrepareBroadcast?: boolean
 }
 
 const NAV_ITEMS: {
@@ -48,7 +49,7 @@ const NAV_ITEMS: {
   { href: "/dashboard/permissions", label: "Permission Requests", icon: KeyRound },
 ]
 
-export default function DashboardSidebar({ role, fullName, companyName }: SidebarProps) {
+export default function DashboardSidebar({ role, fullName, companyName, canPrepareBroadcast }: SidebarProps) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -66,9 +67,12 @@ export default function DashboardSidebar({ role, fullName, companyName }: Sideba
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [mobileOpen])
 
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.adminOnly || role === "company_admin",
-  )
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (!item.adminOnly) return true
+    if (role === "company_admin") return true
+    if (item.href === "/dashboard/broadcast" && canPrepareBroadcast) return true
+    return false
+  })
 
   const firstAdminIdx = visibleItems.findIndex((item) => item.adminOnly)
   const lastAdminIdx = visibleItems.findLastIndex((item) => item.adminOnly)

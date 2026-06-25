@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { getTemplates, saveTemplate, resetTemplate } from "./actions"
-import { getCurrentRole } from "../role-actions"
+import { getDashboardCapabilities } from "../role-actions"
 import type { TemplateData } from "./actions"
 
 const VARIABLES: { variable: string; description: string; types: string[] }[] = [
@@ -26,12 +27,12 @@ function TemplateCard({
   template,
   notification,
   onNotificationClear,
-  isAdmin,
+  canEdit,
 }: {
   template: TemplateData
   notification: Notification
   onNotificationClear: () => void
-  isAdmin: boolean
+  canEdit: boolean
 }) {
   const [body, setBody] = useState(template.body)
   const [name, setName] = useState(template.name)
@@ -92,7 +93,7 @@ function TemplateCard({
         type="text"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        disabled={!isAdmin}
+        disabled={!canEdit}
         className="mb-3 w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
       />
 
@@ -100,12 +101,12 @@ function TemplateCard({
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        disabled={!isAdmin}
+        disabled={!canEdit}
         rows={6}
         className="mb-3 w-full rounded border px-3 py-2 text-sm font-mono disabled:bg-gray-100 disabled:text-gray-500"
       />
 
-      {isAdmin && (
+      {canEdit && (
         <div className="flex items-center gap-3">
           <button
             onClick={handleSave}
@@ -137,13 +138,15 @@ function TemplateCard({
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<TemplateData[]>([])
   const [loading, setLoading] = useState(true)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [canEdit, setCanEdit] = useState(false)
+  const [role, setRole] = useState<string | null>(null)
   const [notification, setNotification] = useState<Notification>(null)
 
   useEffect(() => {
-    Promise.all([getTemplates(), getCurrentRole()]).then(([data, role]) => {
+    Promise.all([getTemplates(), getDashboardCapabilities()]).then(([data, caps]) => {
       setTemplates(data)
-      setIsAdmin(role === "company_admin")
+      setCanEdit(caps?.canEditTemplates ?? false)
+      setRole(caps?.role ?? null)
       setLoading(false)
     })
   }, [])
@@ -168,6 +171,13 @@ export default function TemplatesPage() {
         Edit the message templates used for sending WhatsApp messages to customers.
       </p>
 
+      {!canEdit && role !== "company_admin" && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          You don&apos;t have permission to edit templates.{" "}
+          <Link href="/dashboard/permissions" className="underline font-medium">Request access</Link>.
+        </div>
+      )}
+
       <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {templates.map((t) => (
           <TemplateCard
@@ -175,7 +185,7 @@ export default function TemplatesPage() {
             template={t}
             notification={notification}
             onNotificationClear={() => setNotification(null)}
-            isAdmin={isAdmin}
+            canEdit={canEdit}
           />
         ))}
       </div>

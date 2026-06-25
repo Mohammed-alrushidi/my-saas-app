@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { getSettings, saveSettings, resetSettings } from "./actions"
-import { getCurrentRole } from "../role-actions"
+import { getDashboardCapabilities } from "../role-actions"
 import type { SettingsData } from "./actions"
 
 const DAY_OPTIONS = [7, 14, 30] as const
@@ -14,17 +15,19 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [canEdit, setCanEdit] = useState(false)
+  const [role, setRole] = useState<string | null>(null)
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   useEffect(() => {
-    Promise.all([getSettings(), getCurrentRole()]).then(([data, role]) => {
+    Promise.all([getSettings(), getDashboardCapabilities()]).then(([data, caps]) => {
       if (data) {
         setSettings(data)
         setReminderDays(data.reminder_days)
         setIsActive(data.is_active)
       }
-      setIsAdmin(role === "company_admin")
+      setCanEdit(caps?.canEditSettings ?? false)
+      setRole(caps?.role ?? null)
       setLoading(false)
     })
   }, [])
@@ -79,6 +82,13 @@ export default function SettingsPage() {
         Configure when reminder messages are sent before a policy expires.
       </p>
 
+      {!canEdit && role !== "company_admin" && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          You don&apos;t have permission to edit settings.{" "}
+          <Link href="/dashboard/permissions" className="underline font-medium">Request access</Link>.
+        </div>
+      )}
+
       <div className="max-w-lg rounded-lg border p-6">
         <div className="mb-6">
           <h2 className="mb-3 text-lg font-semibold">Reminder Days</h2>
@@ -92,7 +102,7 @@ export default function SettingsPage() {
                   type="checkbox"
                   checked={reminderDays.includes(day)}
                   onChange={() => toggleDay(day)}
-                  disabled={!isAdmin}
+                  disabled={!canEdit}
                   className="h-4 w-4 disabled:opacity-50"
                 />
                 <span className="text-sm">{day} days before expiry</span>
@@ -108,14 +118,14 @@ export default function SettingsPage() {
               type="checkbox"
               checked={isActive}
               onChange={(e) => setIsActive(e.target.checked)}
-              disabled={!isAdmin}
+              disabled={!canEdit}
               className="h-4 w-4 disabled:opacity-50"
             />
             <span className="text-sm">Reminder messages are active</span>
           </label>
         </div>
 
-        {isAdmin && (
+        {canEdit && (
           <div className="flex items-center gap-3">
             <button
               onClick={handleSave}

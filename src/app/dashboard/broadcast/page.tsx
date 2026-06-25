@@ -1,8 +1,10 @@
 ﻿"use client"
 
 import { useState, useEffect, useCallback } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { loadBroadcastTemplate, getBroadcastRecipientsPaginated, confirmBroadcastSelected } from "./actions"
+import { getDashboardCapabilities } from "../role-actions"
 import type { BroadcastRecipient, ConfirmResult } from "./actions"
 
 const MAX_RECIPIENTS = 50
@@ -24,6 +26,30 @@ export default function BroadcastPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeQuery, setActiveQuery] = useState("")
+  const [pageReady, setPageReady] = useState(false)
+  const [canPrepare, setCanPrepare] = useState(false)
+  const [canSend, setCanSend] = useState(false)
+  const [role, setRole] = useState<string | null>(null)
+
+  useEffect(() => {
+    getDashboardCapabilities().then((caps) => {
+      if (!caps) {
+        setPageReady(true)
+        setRecipientsLoading(false)
+        return
+      }
+      setCanPrepare(caps.canPrepareBroadcast)
+      setCanSend(caps.canSendBroadcast)
+      setRole(caps.role)
+      setPageReady(true)
+
+      if (caps.canPrepareBroadcast) {
+        fetchRecipients("", 1, false)
+      } else {
+        setRecipientsLoading(false)
+      }
+    })
+  }, [])
 
   async function fetchRecipients(q: string, pageNum: number, append: boolean) {
     setError(null)
@@ -55,10 +81,6 @@ export default function BroadcastPage() {
       }
     }
   }
-
-  useEffect(() => {
-    fetchRecipients("", 1, false)
-  }, [])
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -97,16 +119,12 @@ export default function BroadcastPage() {
   const selectedCount = selectedIds.size
   const overLimit = selectedCount > MAX_RECIPIENTS
 
-  function renderTemplate(body: string, name: string, company: string): string {
-    return body.replace(/\{\{customer_name\}\}/g, name).replace(/\{\{company_name\}\}/g, company)
-  }
-
   const sampleMessages = recipients
     .filter((r) => selectedIds.has(r.id))
     .slice(0, 3)
     .map((r) => ({
       mobile: r.mobile_no,
-      body: renderTemplate(body, r.customer_name, ""),
+      body: body.replace(/\{\{customer_name\}\}/g, r.customer_name).replace(/\{\{company_name\}\}/g, ""),
     }))
 
   async function handleLoadTemplate() {
@@ -123,6 +141,7 @@ export default function BroadcastPage() {
   }
 
   async function handleConfirm() {
+    if (!canSend) return
     if (selectedCount === 0 || overLimit) return
     setSending(true)
     setError(null)
@@ -132,7 +151,11 @@ export default function BroadcastPage() {
     setSending(false)
   }
 
-  const canSend = body.trim() && selectedCount > 0 && !overLimit && !sending
+  const readyToSend = body.trim() && selectedCount > 0 && !overLimit && !sending
+
+  if (!pageReady) {
+    return <div className="p-6 text-gray-500">Loading...</div>
+  }
 
   return (
     <div className="p-6">
@@ -147,7 +170,12 @@ export default function BroadcastPage() {
         <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
-      {result ? (
+      {!canPrepare && role !== "company_admin" ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          You don&apos;t have permission to prepare broadcasts.{" "}
+          <Link href="/dashboard/permissions" className="underline font-medium">Request access</Link>.
+        </div>
+      ) : result ? (
         <div className="max-w-2xl">
           {result.success ? (
             <div className="rounded-lg border border-green-200 bg-green-50 p-6">
@@ -362,15 +390,21 @@ export default function BroadcastPage() {
                     <pre className="whitespace-pre-wrap text-sm font-mono">{s.body}</pre>
                   </div>
                 ))}
-                <button
-                  onClick={() => setShowConfirm(true)}
-                  disabled={overLimit || !canSend}
-                  className="mt-3 w-full rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                >
-                  {overLimit
-                    ? `Max ${MAX_RECIPIENTS} recipients (${selectedCount} selected)`
-                    : `Send to ${selectedCount} recipient${selectedCount !== 1 ? "s" : ""}`}
-                </button>
+                {canSend ? (
+                  <button
+                    onClick={() => setShowConfirm(true)}
+                    disabled={overLimit || !readyToSend}
+                    className="mt-3 w-full rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {overLimit
+                      ? `Max ${MAX_RECIPIENTS} recipients (${selectedCount} selected)`
+                      : `Send to ${selectedCount} recipient${selectedCount !== 1 ? "s" : ""}`}
+                  </button>
+                ) : (
+                  <p className="mt-3 text-xs text-amber-600">
+                    Only company admins can send broadcast messages. You can prepare the broadcast, but an admin must send it.
+                  </p>
+                )}
                 {templateBody && body === templateBody && (
                   <p className="mt-2 text-xs text-green-600">Using saved template</p>
                 )}
@@ -387,7 +421,7 @@ export default function BroadcastPage() {
       )}
 
       {/* Confirmation dialog */}
-      {showConfirm && (
+      {showConfirm && canSend && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="mx-4 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
             <h2 className="mb-2 text-lg font-bold">Confirm Broadcast</h2>
