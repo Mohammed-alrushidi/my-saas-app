@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { getSettings, saveSettings, resetSettings } from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
+import { Button } from "@/components/ui/button"
 import type { SettingsData } from "./actions"
 
 const DAY_OPTIONS = [7, 14, 30] as const
@@ -127,20 +128,12 @@ export default function SettingsPage() {
 
         {canEdit && (
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-            >
+            <Button onClick={handleSave} disabled={saving}>
               {saving ? "Saving..." : "Save"}
-            </button>
-            <button
-              onClick={handleReset}
-              disabled={resetting}
-              className="rounded border px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-            >
+            </Button>
+            <Button variant="outline" onClick={handleReset} disabled={resetting}>
               {resetting ? "Resetting..." : "Reset to Default"}
-            </button>
+            </Button>
           </div>
         )}
         {notification && (
