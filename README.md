@@ -203,21 +203,22 @@ Compiles clean. Run this before pushing to verify no errors.
 npm test
 ```
 
-Uses vitest. **99 tests across 11 files:**
+Uses vitest. **184 tests across 12 files:**
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `validation.test.ts` | 19 | Excel upload parser — row limits, column validation, error reporting |
 | `messages-actions.test.ts` | 19 | Renewal preview/confirm, pagination & filters, Load More edge cases, "all" bypass, birthday preview/confirm, role rejection |
-| `broadcast-actions.test.ts` | 16 | Validation, role rejection, server-side eligible-only guard, send success, role-gated template loading |
-| `staff-actions.test.ts` | 3 | inviteStaff / deactivateStaff / activateStaff — non-admin rejection |
-| `templates-actions.test.ts` | 2 | saveTemplate / resetTemplate — non-admin rejection |
-| `settings-actions.test.ts` | 2 | saveSettings / resetSettings — non-admin rejection |
+| `broadcast-actions.test.ts` | 19 | Validation, role rejection, server-side eligible-only guard, send success, role-gated template loading, permission enforcement |
+| `staff-actions.test.ts` | 12 | inviteStaff / deactivateStaff / activateStaff — revokeStaffPermission (8) + getCompanyStaffGrants (1) |
+| `templates-actions.test.ts` | 13 | saveTemplate / resetTemplate with permission enforcement (staff grant checks) |
+| `settings-actions.test.ts` | 12 | saveSettings / resetSettings with permission enforcement (staff grant checks) |
 | `opt-outs-actions.test.ts` | 2 | addOptOut / removeOptOut — non-admin rejection |
 | `upload-actions.test.ts` | 7 | parseExcel/deleteImport role rejection + confirmImport: role, happy path, duplicate, opt-out, invalid row |
 | `scheduler.test.ts` | 16 | No companies, exact-stage matching, stage isolation, birthdays, cross-day dedup, same-day dedup, opted-out exclusion, missing templates, inactive settings, multi-company, API route auth |
 | `super-admin-actions.test.ts` | 8 | Super admin create/toggle company with role rejection |
 | `super-admin-dashboard.test.ts` | 5 | Dashboard data function with role rejection and PII-free data shape |
+| `permissions.test.ts` | 45 | `can()` helper, permission request/approve/reject workflow, role enforcement |
 
 ---
 
@@ -253,13 +254,12 @@ Uses vitest. **99 tests across 11 files:**
 - [x] Server-side role checks for all admin actions
 - [x] `.env.example` with documented variables and placeholders
 - [x] `docs/deployment.md` — full deployment and rollback checklist
-- [x] README updated with current test count (99), correct env vars, and production instructions
-- [x] All 99 tests passing, build clean
+- [x] README updated with current test count (184), correct env vars, and production instructions
+- [x] All 184 tests passing, build clean
 
 ### Remaining before production
 - [ ] **Twilio WABA production number** — requires Meta business verification, WABA approval, and template pre-approval
 - [ ] **Scheduler real provider call** — current scheduler marks messages as "sent" without calling WhatsApp
-- [ ] **Page-level guards** — `/dashboard/upload`, `/dashboard/broadcast`, `/dashboard/staff` lack server-side page guards (server actions are protected)
 - [ ] **UI-level polish** — consider empty states, loading skeletons, error boundaries
 - [ ] **Monitoring** — add error tracking (Sentry, etc.) and uptime monitoring
 
@@ -269,10 +269,10 @@ Uses vitest. **99 tests across 11 files:**
 
 ## Current Roadmap
 
-1. **Testing: largely complete** — 99 tests across 11 files covering all flows plus role rejection and super admin dashboard.
+1. **Testing: largely complete** — 184 tests across 12 files covering all flows plus role rejection, permission enforcement, and super admin dashboard.
 2. **Scheduler MVP: complete** — Cron endpoint for renewal reminders and birthday greetings (Asia/Muscat timezone, exact-stage matching, dedupe, opted-out exclusion). Messages inserted as `status="sent"` — no real WhatsApp provider call yet.
-3. **Scheduler real provider integration** — Replace mock "sent" status with actual WhatsApp API call per message.
-4. **Super Admin page-level guards** — Add server-side page guards to `/dashboard/upload`, `/dashboard/broadcast`, `/dashboard/staff`.
+3. **Permission system: complete** — Staff can request permissions, admin approves/revokes, server enforcement, UI reflection. See `docs/permissions-ADR.md`.
+4. **Scheduler real provider integration** — Replace mock "sent" status with actual WhatsApp API call per message.
 5. **Production WhatsApp/WABA** — Remains postponed. Requires Meta BSP, business verification, WABA approval, and template pre-approval.
 
 ---
