@@ -135,6 +135,99 @@ export async function inviteStaff(
   return { success: true }
 }
 
+export type StaffWithGrants = {
+  id: string
+  full_name: string | null
+  role: string
+  is_active: boolean
+  grants: {
+    id: string
+    permission: string
+    granted_at: string
+  }[]
+}
+
+export async function getCompanyStaffGrants(): Promise<StaffWithGrants[]> {
+  const profile = await getProfile()
+  if (!profile?.company_id) return []
+  if (profile.role !== "company_admin") return []
+
+  const supabase = await createClient()
+
+  const { data: staff } = await supabase
+    .from("profiles")
+    .select("id, full_name, role, is_active")
+    .eq("company_id", profile.company_id)
+    .eq("role", "staff")
+
+  if (!staff || staff.length === 0) return []
+
+  const staffIds = staff.map((s) => s.id)
+
+  const { data: grants } = await supabase
+    .from("staff_permission_grants")
+    .select("id, staff_id, permission, granted_at")
+    .eq("company_id", profile.company_id)
+    .eq("is_active", true)
+    .in("staff_id", staffIds)
+
+  const grantsByStaffId: Record<string, { id: string; permission: string; granted_at: string }[]> = {}
+  if (grants) {
+    for (const g of grants) {
+      if (!grantsByStaffId[g.staff_id]) grantsByStaffId[g.staff_id] = []
+      grantsByStaffId[g.staff_id].push({
+        id: g.id,
+        permission: g.permission,
+        granted_at: g.granted_at,
+      })
+    }
+  }
+
+  return staff.map((s) => ({
+    id: s.id,
+    full_name: s.full_name,
+    role: s.role,
+    is_active: s.is_active,
+    grants: grantsByStaffId[s.id] ?? [],
+  }))
+}
+
+export async function revokeStaffPermission(
+  grantId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const profile = await getProfile()
+  if (!profile) return { success: false, error: "Authentication required" }
+  if (profile.role !== "company_admin") return { success: false, error: "Only admins can revoke permissions" }
+  if (profile.is_active !== true) return { success: false, error: "Account is not active" }
+  if (!profile.company_id) return { success: false, error: "No company assigned" }
+
+  const supabase = await createClient()
+
+  const { data: grant } = await supabase
+    .from("staff_permission_grants")
+    .select("id, company_id, is_active")
+    .eq("id", grantId)
+    .single()
+
+  if (!grant) return { success: false, error: "Permission grant not found" }
+  if (grant.company_id !== profile.company_id) return { success: false, error: "Permission grant not found" }
+  if (grant.is_active !== true) return { success: false, error: "Permission grant is already revoked" }
+
+  const { error } = await supabase
+    .from("staff_permission_grants")
+    .update({
+      is_active: false,
+      revoked_by: profile.id,
+      revoked_at: new Date().toISOString(),
+    })
+    .eq("id", grantId)
+
+  if (error) return { success: false, error: error.message }
+
+  revalidatePath("/dashboard/staff")
+  return { success: true }
+}
+
 export async function deactivateStaff(
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
