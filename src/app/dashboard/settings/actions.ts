@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getProfile, getReminderSettings } from "@/lib/supabase/queries"
+import { can, type ProfileLike } from "@/lib/supabase/permissions"
 
 const ALLOWED_DAYS = [7, 14, 30] as const
 
@@ -23,7 +24,9 @@ export async function saveSettings(
 ): Promise<{ success: boolean; error?: string }> {
   const profile = await getProfile()
   if (!profile?.company_id) return { success: false, error: "No company assigned" }
-  if (profile.role !== "company_admin") return { success: false, error: "Only admins can edit settings" }
+  if (!await can(profile as ProfileLike, "reminder_settings:edit")) {
+    return { success: false, error: "You don't have permission to edit settings" }
+  }
 
   const invalidDays = reminderDays.filter((d) => !ALLOWED_DAYS.includes(d as typeof ALLOWED_DAYS[number]))
   if (invalidDays.length > 0) {
@@ -50,7 +53,9 @@ export async function saveSettings(
 export async function resetSettings(): Promise<{ success: boolean; error?: string }> {
   const profile = await getProfile()
   if (!profile?.company_id) return { success: false, error: "No company assigned" }
-  if (profile.role !== "company_admin") return { success: false, error: "Only admins can reset settings" }
+  if (!await can(profile as ProfileLike, "reminder_settings:edit")) {
+    return { success: false, error: "You don't have permission to edit settings" }
+  }
 
   const supabase = await createClient()
 

@@ -29,6 +29,7 @@ const mockGetProfile = vi.fn(() => ({
   id: "test-user-id",
   company_id: "test-company-id",
   role: "company_admin",
+  is_active: true,
   companies: { name: "Test Company" },
 }))
 
@@ -63,19 +64,32 @@ describe("loadBroadcastTemplate", () => {
     expect(result.body).toBeNull()
   })
 
-  it("rejects staff and does not leak template body", async () => {
+  it("rejects staff without broadcast:create grant", async () => {
     mockGetProfile.mockReturnValueOnce({
       id: "test-user-id",
       company_id: "test-company-id",
       role: "staff",
+      is_active: true,
       companies: { name: "Test Company" },
     })
 
-    mockResolveValue = { data: { body: "Secret body" }, error: null }
-
     const result = await loadBroadcastTemplate()
     expect(result.body).toBeNull()
-    expect(result.error).toContain("Only admins")
+    expect(result.error).toContain("permission to prepare")
+  })
+
+  it("allows staff with broadcast:create grant to load template", async () => {
+    mockGetProfile.mockReturnValueOnce({
+      id: "test-user-id",
+      company_id: "test-company-id",
+      role: "staff",
+      is_active: true,
+      companies: { name: "Test Company" },
+    })
+    mockResolveValue = { data: { id: "grant-1", body: "Hello {{customer_name}}" }, error: null }
+
+    const result = await loadBroadcastTemplate()
+    expect(result.body).toBe("Hello {{customer_name}}")
   })
 
   it("preserves company_admin allowed behavior", async () => {
@@ -119,12 +133,27 @@ describe("confirmBroadcastSelected", () => {
       id: "test-user-id",
       company_id: "test-company-id",
       role: "staff",
+      is_active: true,
       companies: { name: "Test Company" },
     })
 
     const result = await confirmBroadcastSelected("Hello", ["id-1"])
     expect(result.error).toContain("Only admins")
     expect(result.success).toBe(false)
+  })
+
+  it("rejects staff with broadcast:create grant from sending", async () => {
+    mockGetProfile.mockReturnValueOnce({
+      id: "test-user-id",
+      company_id: "test-company-id",
+      role: "staff",
+      is_active: true,
+      companies: { name: "Test Company" },
+    })
+
+    const result = await confirmBroadcastSelected("Hello", ["id-1"])
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("Only admins")
   })
 
   it("skips invalid_number and opted_out recipients", async () => {
@@ -249,11 +278,12 @@ describe("getBroadcastRecipientsPaginated", () => {
     expect(result.hasMore).toBe(false)
   })
 
-  it("rejects non-company_admin role", async () => {
+  it("rejects staff without broadcast:create grant", async () => {
     mockGetProfile.mockReturnValueOnce({
       id: "test-user-id",
       company_id: "test-company-id",
       role: "staff",
+      is_active: true,
       companies: { name: "Test Company" },
     })
 
@@ -261,5 +291,24 @@ describe("getBroadcastRecipientsPaginated", () => {
 
     expect(result.recipients).toHaveLength(0)
     expect(result.hasMore).toBe(false)
+  })
+
+  it("allows staff with broadcast:create grant to search recipients", async () => {
+    mockGetProfile.mockReturnValueOnce({
+      id: "test-user-id",
+      company_id: "test-company-id",
+      role: "staff",
+      is_active: true,
+      companies: { name: "Test Company" },
+    })
+    const customers = [
+      { id: "c1", customer_name: "Test Customer", mobile_no: "+9680000", policy_no: "P1", communication_status: "allowed" },
+    ]
+    mockResolveValue = { data: customers, error: null }
+
+    const result = await getBroadcastRecipientsPaginated("", 1)
+
+    expect(result.recipients).toHaveLength(1)
+    expect(result.recipients[0].customer_name).toBe("Test Customer")
   })
 })

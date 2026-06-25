@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { getProfile } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/server"
 import { sendMessages } from "@/lib/messaging/send"
+import { can, type ProfileLike } from "@/lib/supabase/permissions"
 
 const PAGE_SIZE = 50
 
@@ -30,7 +31,9 @@ export type PaginatedRecipients = {
 export async function loadBroadcastTemplate(): Promise<{ body: string | null; error?: string }> {
   const profile = await getProfile()
   if (!profile?.company_id) return { body: null, error: "No company assigned" }
-  if (profile.role !== "company_admin") return { body: null, error: "Only admins can load templates" }
+  if (!await can(profile as ProfileLike, "broadcast:create")) {
+    return { body: null, error: "You don't have permission to prepare broadcasts" }
+  }
 
   const supabase = await createClient()
 
@@ -50,7 +53,9 @@ export async function getBroadcastRecipientsPaginated(
 ): Promise<PaginatedRecipients> {
   const profile = await getProfile()
   if (!profile?.company_id) return { recipients: [], hasMore: false }
-  if (profile.role !== "company_admin") return { recipients: [], hasMore: false }
+  if (!await can(profile as ProfileLike, "broadcast:create")) {
+    return { recipients: [], hasMore: false }
+  }
 
   const supabase = await createClient()
   const fetchSize = PAGE_SIZE + 1

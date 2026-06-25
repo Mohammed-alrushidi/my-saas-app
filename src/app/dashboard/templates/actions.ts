@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getProfile, getCompanyTemplates } from "@/lib/supabase/queries"
 import { DEFAULT_TEMPLATES } from "@/lib/constants"
+import { can, type ProfileLike } from "@/lib/supabase/permissions"
 
 export type TemplateData = {
   id: string
@@ -24,7 +25,9 @@ export async function saveTemplate(
 ): Promise<{ success: boolean; error?: string }> {
   const profile = await getProfile()
   if (!profile?.company_id) return { success: false, error: "No company assigned" }
-  if (profile.role !== "company_admin") return { success: false, error: "Only admins can edit templates" }
+  if (!await can(profile as ProfileLike, "templates:edit")) {
+    return { success: false, error: "You don't have permission to edit templates" }
+  }
 
   const trimmedBody = body.trim()
   if (!trimmedBody) return { success: false, error: "Template body cannot be empty" }
@@ -48,7 +51,9 @@ export async function resetTemplate(
 ): Promise<{ success: boolean; error?: string }> {
   const profile = await getProfile()
   if (!profile?.company_id) return { success: false, error: "No company assigned" }
-  if (profile.role !== "company_admin") return { success: false, error: "Only admins can reset templates" }
+  if (!await can(profile as ProfileLike, "templates:edit")) {
+    return { success: false, error: "You don't have permission to edit templates" }
+  }
 
   const def = DEFAULT_TEMPLATES[templateType]
   if (!def) return { success: false, error: "Invalid template type" }
