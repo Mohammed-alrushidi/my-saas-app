@@ -336,8 +336,8 @@ describe("getCompanyPermissionRequests", () => {
   it("splits requests into pending and reviewed arrays with staff names", async () => {
     mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
     const mockData = [
-      { id: "1", permission: "templates:edit", status: "pending", reason: "Need to edit", staff_id: "staff-1", company_id: "company-a", reviewed_by: null, reviewed_at: null, review_note: null, created_at: "2026-06-24T10:00:00Z", profiles: { full_name: "Staff One" } },
-      { id: "2", permission: "broadcast:create", status: "approved", reason: "Need to broadcast", staff_id: "staff-2", company_id: "company-a", reviewed_by: "admin-id", reviewed_at: "2026-06-23T10:00:00Z", review_note: "Looks good", created_at: "2026-06-22T10:00:00Z", profiles: { full_name: "Staff Two" } },
+      { id: "1", permission: "templates:edit", status: "pending", reason: "Need to edit", staff_id: "staff-1", company_id: "company-a", reviewed_by: null, reviewed_at: null, review_note: null, created_at: "2026-06-24T10:00:00Z", staff: { full_name: "Staff One" } },
+      { id: "2", permission: "broadcast:create", status: "approved", reason: "Need to broadcast", staff_id: "staff-2", company_id: "company-a", reviewed_by: "admin-id", reviewed_at: "2026-06-23T10:00:00Z", review_note: "Looks good", created_at: "2026-06-22T10:00:00Z", staff: { full_name: "Staff Two" } },
     ]
     mockChain.order = vi.fn(() => Promise.resolve({ data: mockData }))
 
@@ -361,7 +361,7 @@ describe("approvePermissionRequest", () => {
     permission: "templates:edit",
     status: "pending",
     reason: "I need to edit templates",
-    profiles: { full_name: "Staff User", company_id: "company-a", role: "staff", is_active: true },
+    staff: { full_name: "Staff User", company_id: "company-a", role: "staff", is_active: true },
   }
 
   beforeEach(() => {
@@ -397,8 +397,8 @@ describe("approvePermissionRequest", () => {
 
   it("rejects for inactive staff", async () => {
     mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
-    const inactiveProfiles = { full_name: "Staff User", company_id: "company-a", role: "staff", is_active: false }
-    mockChain.maybeSingle = vi.fn(() => Promise.resolve({ data: { ...pendingRequest, profiles: inactiveProfiles } }))
+    const inactiveStaff = { full_name: "Staff User", company_id: "company-a", role: "staff", is_active: false }
+    mockChain.maybeSingle = vi.fn(() => Promise.resolve({ data: { ...pendingRequest, staff: inactiveStaff } }))
     const result = await approvePermissionRequest("req-1")
     expect(result.success).toBe(false)
     expect(result.error).toContain("inactive staff member")

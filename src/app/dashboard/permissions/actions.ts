@@ -122,7 +122,7 @@ export async function getCompanyPermissionRequests(): Promise<{
 
   const { data, error } = await supabase
     .from("permission_requests")
-    .select("*, profiles!inner(full_name)")
+    .select("*, staff:profiles!permission_requests_staff_id_fkey(full_name)")
     .eq("company_id", result.profile.company_id)
     .order("created_at", { ascending: false })
 
@@ -131,7 +131,7 @@ export async function getCompanyPermissionRequests(): Promise<{
   const all = data.map((r: any) => ({
     id: r.id,
     staff_id: r.staff_id,
-    staff_name: r.profiles?.full_name ?? null,
+    staff_name: r.staff?.full_name ?? null,
     permission: r.permission,
     reason: r.reason,
     status: r.status as "pending" | "approved" | "rejected",
@@ -162,7 +162,7 @@ export async function approvePermissionRequest(
 
   const { data: request, error: loadError } = await supabase
     .from("permission_requests")
-    .select("*, profiles!inner(full_name, company_id, role, is_active)")
+    .select("*, staff:profiles!permission_requests_staff_id_fkey(full_name, company_id, role, is_active)")
     .eq("id", requestId)
     .maybeSingle()
 
@@ -172,7 +172,7 @@ export async function approvePermissionRequest(
 
   if (request.company_id !== admin.company_id) return { success: false, error: "This request does not belong to your company" }
 
-  const staffProfile = (request as any).profiles
+  const staffProfile = (request as any).staff
   if (!staffProfile) return { success: false, error: "Staff member not found" }
   if (staffProfile.role !== "staff") return { success: false, error: "Cannot approve permissions for this user" }
   if (!staffProfile.is_active) return { success: false, error: "Cannot approve permissions for an inactive staff member" }
