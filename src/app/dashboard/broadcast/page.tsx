@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { loadBroadcastTemplate, getBroadcastRecipientsPaginated, confirmBroadcastSelected } from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
 import type { BroadcastRecipient, ConfirmResult } from "./actions"
+import { Button } from "@/components/ui/button"
 
 const MAX_RECIPIENTS = 50
 
@@ -185,20 +186,17 @@ export default function BroadcastPage() {
                 {result.error && <p className="text-red-600">Errors: {result.error}</p>}
               </div>
               <div className="mt-4 flex gap-3">
-                <button
-                  onClick={() => router.push("/dashboard/messages")}
-                  className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-                >
+                <Button onClick={() => router.push("/dashboard/messages")}>
                   View history
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => {
                     setBody(""); setResult(null); setError(null); setTemplateBody(null)
                   }}
-                  className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50"
                 >
                   Send another
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
@@ -222,12 +220,14 @@ export default function BroadcastPage() {
                     </span>
                   )}
                   {selectedCount > 0 && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setSelectedIds(new Set())}
-                      className="ml-2 text-xs text-red-600 hover:underline"
+                      className="ml-2"
                     >
                       Clear
-                    </button>
+                    </Button>
                   )}
                 </h2>
                 <span className="text-xs text-gray-500">
@@ -250,13 +250,12 @@ export default function BroadcastPage() {
                   placeholder="Search by name, mobile, or policy..."
                   className="flex-1 rounded border px-3 py-1.5 text-sm"
                 />
-                <button
+                <Button
                   type="submit"
                   disabled={recipientsLoading}
-                  className="rounded-md bg-black px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
                 >
                   Search
-                </button>
+                </Button>
               </form>
 
               {recipientsLoading ? (
@@ -333,13 +332,13 @@ export default function BroadcastPage() {
                   </table>
                   {hasMore && (
                     <div className="border-t px-4 py-3 text-center">
-                      <button
+                      <Button
+                        variant="outline"
                         onClick={handleLoadMore}
                         disabled={loadingMore}
-                        className="rounded-md border px-6 py-2 text-sm font-medium hover:bg-gray-100 disabled:opacity-50"
                       >
                         {loadingMore ? "Loading..." : "Load More"}
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -359,20 +358,22 @@ export default function BroadcastPage() {
                 className="mb-3 w-full rounded border px-3 py-2 text-sm font-mono"
               />
               <div className="flex flex-wrap gap-2">
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleLoadTemplate}
                   disabled={loading || recipientsLoading}
-                  className="rounded border px-3 py-2 text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
                 >
                   Load Template
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => { setBody(""); setError(null) }}
                   disabled={!body}
-                  className="rounded border px-3 py-2 text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
                 >
                   Clear
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -391,15 +392,15 @@ export default function BroadcastPage() {
                   </div>
                 ))}
                 {canSend ? (
-                  <button
+                  <Button
                     onClick={() => setShowConfirm(true)}
                     disabled={overLimit || !readyToSend}
-                    className="mt-3 w-full rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                    className="mt-3 w-full"
                   >
                     {overLimit
                       ? `Max ${MAX_RECIPIENTS} recipients (${selectedCount} selected)`
                       : `Send to ${selectedCount} recipient${selectedCount !== 1 ? "s" : ""}`}
-                  </button>
+                  </Button>
                 ) : (
                   <p className="mt-3 text-xs text-amber-600">
                     Only company admins can send broadcast messages. You can prepare the broadcast, but an admin must send it.
@@ -442,18 +443,18 @@ export default function BroadcastPage() {
             )}
 
             <div className="flex justify-end gap-3">
-              <button
+              <Button
+                variant="outline"
                 onClick={() => setShowConfirm(false)}
-                className="rounded border px-4 py-2 text-sm font-medium hover:bg-gray-100"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={handleConfirm}
-                className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                disabled={sending}
               >
                 {sending ? "Sending..." : "Confirm"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
