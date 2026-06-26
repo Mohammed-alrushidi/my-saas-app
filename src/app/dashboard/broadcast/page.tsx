@@ -147,9 +147,14 @@ export default function BroadcastPage() {
     setSending(true)
     setError(null)
     setShowConfirm(false)
-    const res = await confirmBroadcastSelected(body, Array.from(selectedIds))
-    setResult(res)
-    setSending(false)
+    try {
+      const res = await confirmBroadcastSelected(body, Array.from(selectedIds))
+      setResult(res)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "An unexpected error occurred")
+    } finally {
+      setSending(false)
+    }
   }
 
   const readyToSend = body.trim() && selectedCount > 0 && !overLimit && !sending
@@ -444,12 +449,14 @@ export default function BroadcastPage() {
 
             <div className="flex justify-end gap-3">
               <Button
+                type="button"
                 variant="outline"
                 onClick={() => setShowConfirm(false)}
               >
                 Cancel
               </Button>
               <Button
+                type="button"
                 onClick={handleConfirm}
                 disabled={sending}
               >
