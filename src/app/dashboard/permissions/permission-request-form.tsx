@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { createPermissionRequest } from "./actions"
 import { COMPANY_PERMISSIONS } from "@/lib/permission-types"
+import { Button } from "@/components/ui/button"
 
 const PERMISSION_LABELS: Record<string, string> = {
   "templates:edit": "Templates: Edit",
@@ -80,13 +81,12 @@ export default function PermissionRequestForm() {
         </p>
       </div>
 
-      <button
+      <Button
         type="submit"
         disabled={submitting || reason.trim().length < MIN_REASON || !permission}
-        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
       >
         {submitting ? "Submitting..." : "Submit Request"}
-      </button>
+      </Button>
 
       {message && (
         <p

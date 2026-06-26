@@ -1,6 +1,7 @@
 import { getProfile } from "@/lib/supabase/queries"
 import { redirect } from "next/navigation"
 import { searchCustomers } from "./actions"
+import { Button } from "@/components/ui/button"
 
 const STATUS_LABELS: Record<string, string> = {
   all: "All",
@@ -65,12 +66,9 @@ export default async function CustomersPage(props: {
             ))}
           </select>
         </div>
-        <button
-          type="submit"
-          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-        >
+        <Button type="submit">
           Search
-        </button>
+        </Button>
       </form>
 
       <div className="rounded-lg border">
