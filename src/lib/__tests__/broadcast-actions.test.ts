@@ -200,6 +200,22 @@ describe("confirmBroadcastSelected", () => {
     expect(insertedMessages[1].message_body).toContain("Bob")
   })
 
+  it("sets mock=true when provider returns mock- prefixed IDs", async () => {
+    const customers = [
+      { id: "c1", customer_name: "Alice", mobile_no: "+9681111", policy_no: "P1", communication_status: "allowed" },
+    ]
+    mockResolveValue = { data: customers, error: null }
+    mockSendMessages.mockResolvedValueOnce([
+      { success: true, providerMessageId: "mock-abc123" },
+    ])
+
+    const result = await confirmBroadcastSelected("Hello", ["c1"])
+
+    expect(result.success).toBe(true)
+    expect(result.mock).toBe(true)
+    expect(result.sent).toBe(1)
+  })
+
   it("returns error when all selected recipients are ineligible", async () => {
     const customers = [
       { id: "c1", customer_name: "Alice", mobile_no: "+9681111", policy_no: "P1", communication_status: "invalid_number" },

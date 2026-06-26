@@ -20,6 +20,8 @@ export type ConfirmResult = {
   sent: number
   skipped: number
   error?: string
+  /** True when the WhatsApp provider is in mock/sandbox mode — no real message was sent. */
+  mock?: boolean
 }
 
 export type PaginatedRecipients = {
@@ -125,6 +127,7 @@ export async function confirmBroadcastSelected(
     }))
 
     const results = await sendMessages(recipients)
+    const isMock = results.some((r) => r.providerMessageId?.startsWith("mock-"))
     const now = new Date().toISOString()
     const messages = allowedCustomers.map((c, i) => ({
       company_id: profile.company_id,
@@ -142,12 +145,7 @@ export async function confirmBroadcastSelected(
     const { error } = await supabase.from("messages").insert(messages)
     if (error) return { success: false, sent: 0, skipped: 0, error: error.message }
 
-    // revalidation intentionally skipped:
-    //   Messages are already inserted; immediate revalidation of
-    //   /dashboard/messages can trigger a production render crash in the
-    //   dashboard server layout. Message History will show fresh data on
-    //   normal navigation or refresh. Revisit with a safer strategy later.
-    return { success: true, sent: messages.filter((m) => m.status === "sent").length, skipped: 0 }
+    return { success: true, sent: messages.filter((m) => m.status === "sent").length, skipped: 0, mock: isMock }
   } catch (e) {
     console.error("confirmBroadcastSelected error:", e)
     return { success: false, sent: 0, skipped: 0, error: e instanceof Error ? e.message : "Unexpected error" }
