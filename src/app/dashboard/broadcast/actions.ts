@@ -1,6 +1,5 @@
 ﻿"use server"
 
-import { revalidatePath } from "next/cache"
 import { getProfile } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/server"
 import { sendMessages } from "@/lib/messaging/send"
@@ -142,6 +141,10 @@ export async function confirmBroadcastSelected(
   const { error } = await supabase.from("messages").insert(messages)
   if (error) return { success: false, sent: 0, skipped: 0, error: error.message }
 
-  revalidatePath("/dashboard/messages")
+  // revalidation intentionally skipped:
+  //   Messages are already inserted; immediate revalidation of
+  //   /dashboard/messages can trigger a production render crash in the
+  //   dashboard server layout. Message History will show fresh data on
+  //   normal navigation or refresh. Revisit with a safer strategy later.
   return { success: true, sent: messages.filter((m) => m.status === "sent").length, skipped: 0 }
 }
