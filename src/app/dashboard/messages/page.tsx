@@ -10,6 +10,7 @@ import {
 } from "./actions"
 import { getCurrentRole } from "../role-actions"
 import type { MessageRecord, PreviewResult, ConfirmResult } from "./actions"
+import { Button } from "@/components/ui/button"
 
 type Tab = "history" | "renewal" | "birthday"
 
@@ -190,13 +191,13 @@ function HistorySection() {
 
           {hasMore && (
             <div className="mt-4 text-center">
-              <button
+              <Button
+                variant="outline"
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="rounded-md border px-6 py-2 text-sm font-medium hover:bg-gray-100 disabled:opacity-50"
               >
                 {loadingMore ? "Loading..." : "Load More"}
-              </button>
+              </Button>
             </div>
           )}
         </>
@@ -325,13 +326,12 @@ function RenewalSection() {
         ))}
       </div>
 
-      <button
+      <Button
         onClick={handlePreview}
         disabled={loading}
-        className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {loading ? "Previewing..." : "Preview"}
-      </button>
+      </Button>
 
       {preview && (
         <div className="mt-4 rounded-lg border p-4">
@@ -353,13 +353,12 @@ function RenewalSection() {
                   ))}
                 </div>
               )}
-              <button
+              <Button
                 onClick={handleConfirm}
                 disabled={sending}
-                className="rounded bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
               >
                 {sending ? "Sending..." : `Confirm Send (${preview.count})`}
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -409,13 +408,12 @@ function BirthdaySection() {
         Send birthday greetings to customers celebrating today.
       </p>
 
-      <button
+      <Button
         onClick={handlePreview}
         disabled={loading}
-        className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {loading ? "Previewing..." : "Preview"}
-      </button>
+      </Button>
 
       {preview && (
         <div className="mt-4 rounded-lg border p-4">
@@ -437,13 +435,12 @@ function BirthdaySection() {
                   ))}
                 </div>
               )}
-              <button
+              <Button
                 onClick={handleConfirm}
                 disabled={sending}
-                className="rounded bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
               >
                 {sending ? "Sending..." : `Confirm Send (${preview.count})`}
-              </button>
+              </Button>
             </>
           )}
         </div>
