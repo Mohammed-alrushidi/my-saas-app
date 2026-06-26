@@ -48,11 +48,11 @@ export function ConfirmDialog({
       aria-label={title}
     >
       <div
-        className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+        className="mx-4 w-full max-w-md rounded-lg bg-card p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-2 text-lg font-bold">{title}</h2>
-        <p className="mb-6 text-sm text-gray-600">{message}</p>
+        <p className="mb-6 text-sm text-muted-foreground">{message}</p>
         <div className="flex justify-end gap-3">
           <Button variant="outline" type="button" onClick={onCancel}>
             {cancelLabel}

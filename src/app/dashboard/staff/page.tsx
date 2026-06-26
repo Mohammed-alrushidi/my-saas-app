@@ -74,7 +74,7 @@ export default function StaffPage() {
 
       {notification && (
         <div
-          className={`mb-4 rounded px-4 py-2 text-sm ${
+          className={`mb-4 rounded-md px-4 py-2 text-sm ${
             notification.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
           }`}
         >

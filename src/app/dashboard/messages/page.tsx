@@ -365,7 +365,7 @@ function RenewalSection() {
       )}
 
       {result && (
-        <div className={`mt-4 rounded px-4 py-3 text-sm ${
+        <div className={`mt-4 rounded-md px-4 py-3 text-sm ${
           result.success ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
         }`}>
           {result.success
@@ -447,7 +447,7 @@ function BirthdaySection() {
       )}
 
       {result && (
-        <div className={`mt-4 rounded px-4 py-3 text-sm ${
+        <div className={`mt-4 rounded-md px-4 py-3 text-sm ${
           result.success ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
         }`}>
           {result.success ? `${result.sent} birthday message(s) sent.` : result.error}
