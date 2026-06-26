@@ -1,10 +1,27 @@
 import { TwilioWhatsAppProvider } from "./twilio"
-import type { MessageProvider } from "./types"
+import type { MessageProvider, SendResult } from "./types"
 
 let provider: MessageProvider | null = null
 
+class MockWhatsAppProvider implements MessageProvider {
+  name = "mock"
+
+  async send(_to: string, _body: string): Promise<SendResult> {
+    const id = `mock-sid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    return { success: true, providerMessageId: id }
+  }
+}
+
 export function getProvider(): MessageProvider {
   if (!provider) {
+    const isMock = process.env.MOCK_MODE === "true"
+
+    if (isMock) {
+      console.info("MOCK_MODE enabled — using mock provider. No real WhatsApp messages will be sent.")
+      provider = new MockWhatsAppProvider()
+      return provider
+    }
+
     const accountSid = process.env.TWILIO_ACCOUNT_SID
     const authToken = process.env.TWILIO_AUTH_TOKEN
     const from = process.env.TWILIO_WHATSAPP_NUMBER

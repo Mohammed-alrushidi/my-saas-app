@@ -189,6 +189,9 @@ export default function BroadcastPage() {
               <div className="space-y-1 text-sm text-green-700">
                 <p>{result.sent} message(s) sent successfully.</p>
                 {result.error && <p className="text-red-600">Errors: {result.error}</p>}
+                {result.mock && (
+                  <p className="mt-1 text-xs text-amber-600">Mock send only — no WhatsApp message was sent.</p>
+                )}
               </div>
               <div className="mt-4 flex gap-3">
                 <Button onClick={() => router.push("/dashboard/messages")}>
