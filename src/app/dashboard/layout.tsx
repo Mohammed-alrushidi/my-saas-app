@@ -4,7 +4,13 @@ import { can, type ProfileLike } from "@/lib/supabase/permissions"
 import DashboardSidebar from "@/components/dashboard-sidebar"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const profile = await getProfile()
+  let profile
+  try {
+    profile = await getProfile()
+  } catch {
+    // getProfile can fail during automatic RSC re-render triggered by cookie
+    // modification in a server action. Fall through to redirect below.
+  }
 
   if (!profile) {
     redirect("/login")

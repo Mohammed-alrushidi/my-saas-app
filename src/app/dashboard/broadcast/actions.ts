@@ -86,65 +86,70 @@ export async function confirmBroadcastSelected(
   body: string,
   selectedIds: string[],
 ): Promise<ConfirmResult> {
-  const profile = await getProfile()
-  if (!profile?.company_id) return { success: false, sent: 0, skipped: 0, error: "No company assigned" }
-  if (profile.role !== "company_admin") return { success: false, sent: 0, skipped: 0, error: "Only admins can send messages" }
+  try {
+    const profile = await getProfile()
+    if (!profile?.company_id) return { success: false, sent: 0, skipped: 0, error: "No company assigned" }
+    if (profile.role !== "company_admin") return { success: false, sent: 0, skipped: 0, error: "Only admins can send messages" }
 
-  if (!body.trim()) return { success: false, sent: 0, skipped: 0, error: "Message body cannot be empty" }
-  if (selectedIds.length === 0) return { success: false, sent: 0, skipped: 0, error: "No recipients selected" }
-  if (selectedIds.length > 50) return { success: false, sent: 0, skipped: 0, error: "Maximum 50 recipients allowed" }
+    if (!body.trim()) return { success: false, sent: 0, skipped: 0, error: "Message body cannot be empty" }
+    if (selectedIds.length === 0) return { success: false, sent: 0, skipped: 0, error: "No recipients selected" }
+    if (selectedIds.length > 50) return { success: false, sent: 0, skipped: 0, error: "Maximum 50 recipients allowed" }
 
-  const supabase = await createClient()
+    const supabase = await createClient()
 
-  const { data: customers } = await supabase
-    .from("customer_records")
-    .select("*")
-    .eq("company_id", profile.company_id)
-    .in("id", selectedIds)
+    const { data: customers } = await supabase
+      .from("customer_records")
+      .select("*")
+      .eq("company_id", profile.company_id)
+      .in("id", selectedIds)
 
-  if (!customers || customers.length === 0) return { success: false, sent: 0, skipped: 0, error: "No matching customers found" }
+    if (!customers || customers.length === 0) return { success: false, sent: 0, skipped: 0, error: "No matching customers found" }
 
-  const allowedCustomers = customers.filter((c) => c.communication_status === "allowed")
+    const allowedCustomers = customers.filter((c) => c.communication_status === "allowed")
 
-  if (allowedCustomers.length === 0) {
-    return { success: false, sent: 0, skipped: 0, error: "No eligible recipients" }
+    if (allowedCustomers.length === 0) {
+      return { success: false, sent: 0, skipped: 0, error: "No eligible recipients" }
+    }
+
+    const companyName = (profile as any).companies?.name ?? ""
+
+    function renderBroadcast(body: string, c: { customer_name: string }): string {
+      return body
+        .replace(/\{\{customer_name\}\}/g, c.customer_name)
+        .replace(/\{\{company_name\}\}/g, companyName)
+    }
+
+    const recipients = allowedCustomers.map((c) => ({
+      mobile: c.mobile_no,
+      body: renderBroadcast(body, c),
+    }))
+
+    const results = await sendMessages(recipients)
+    const now = new Date().toISOString()
+    const messages = allowedCustomers.map((c, i) => ({
+      company_id: profile.company_id,
+      customer_record_id: c.id,
+      message_type: "broadcast" as const,
+      recipient_mobile: c.mobile_no,
+      template_used: null,
+      message_body: recipients[i].body,
+      status: (results[i].success ? "sent" : "failed") as "sent" | "failed",
+      provider_message_id: results[i].providerMessageId ?? null,
+      failure_reason: results[i].error ?? null,
+      sent_at: results[i].success ? now : null,
+    }))
+
+    const { error } = await supabase.from("messages").insert(messages)
+    if (error) return { success: false, sent: 0, skipped: 0, error: error.message }
+
+    // revalidation intentionally skipped:
+    //   Messages are already inserted; immediate revalidation of
+    //   /dashboard/messages can trigger a production render crash in the
+    //   dashboard server layout. Message History will show fresh data on
+    //   normal navigation or refresh. Revisit with a safer strategy later.
+    return { success: true, sent: messages.filter((m) => m.status === "sent").length, skipped: 0 }
+  } catch (e) {
+    console.error("confirmBroadcastSelected error:", e)
+    return { success: false, sent: 0, skipped: 0, error: e instanceof Error ? e.message : "Unexpected error" }
   }
-
-  const companyName = (profile as any).companies?.name ?? ""
-
-  function renderBroadcast(body: string, c: { customer_name: string }): string {
-    return body
-      .replace(/\{\{customer_name\}\}/g, c.customer_name)
-      .replace(/\{\{company_name\}\}/g, companyName)
-  }
-
-  const recipients = allowedCustomers.map((c) => ({
-    mobile: c.mobile_no,
-    body: renderBroadcast(body, c),
-  }))
-
-  const results = await sendMessages(recipients)
-  const now = new Date().toISOString()
-  const messages = allowedCustomers.map((c, i) => ({
-    company_id: profile.company_id,
-    customer_record_id: c.id,
-    message_type: "broadcast" as const,
-    recipient_mobile: c.mobile_no,
-    template_used: null,
-    message_body: recipients[i].body,
-    status: (results[i].success ? "sent" : "failed") as "sent" | "failed",
-    provider_message_id: results[i].providerMessageId ?? null,
-    failure_reason: results[i].error ?? null,
-    sent_at: results[i].success ? now : null,
-  }))
-
-  const { error } = await supabase.from("messages").insert(messages)
-  if (error) return { success: false, sent: 0, skipped: 0, error: error.message }
-
-  // revalidation intentionally skipped:
-  //   Messages are already inserted; immediate revalidation of
-  //   /dashboard/messages can trigger a production render crash in the
-  //   dashboard server layout. Message History will show fresh data on
-  //   normal navigation or refresh. Revisit with a safer strategy later.
-  return { success: true, sent: messages.filter((m) => m.status === "sent").length, skipped: 0 }
 }
