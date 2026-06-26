@@ -5,6 +5,7 @@ import { listStaff, inviteStaff, deactivateStaff, activateStaff, getCompanyStaff
 import type { StaffMember } from "./actions"
 import StaffPermissionGrants from "./staff-permission-grants"
 import type { StaffPermissionGrant } from "./staff-permission-grants"
+import { Button } from "@/components/ui/button"
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([])
@@ -78,7 +79,7 @@ export default function StaffPage() {
           }`}
         >
           {notification.message}
-          <button className="ml-3 font-bold" onClick={() => setNotification(null)}>x</button>
+          <Button variant="ghost" size="xs" className="ml-3 font-bold" onClick={() => setNotification(null)}>x</Button>
         </div>
       )}
 
@@ -105,13 +106,12 @@ export default function StaffPage() {
               className="w-full rounded border px-3 py-2 text-sm"
             />
           </div>
-          <button
+          <Button
             onClick={handleInvite}
             disabled={inviting || !email.trim() || !fullName.trim()}
-            className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {inviting ? "Inviting..." : "Send Invite"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -163,19 +163,13 @@ export default function StaffPage() {
                   </td>
                   <td className="px-4 py-3">
                     {s.is_active ? (
-                      <button
-                        onClick={() => handleDeactivate(s.id, s.full_name ?? s.email ?? "")}
-                        className="text-sm text-red-600 hover:text-red-800"
-                      >
+                      <Button variant="destructive" size="sm" onClick={() => handleDeactivate(s.id, s.full_name ?? s.email ?? "")}>
                         Deactivate
-                      </button>
+                      </Button>
                     ) : (
-                      <button
-                        onClick={() => handleActivate(s.id, s.full_name ?? s.email ?? "")}
-                        className="text-sm text-green-600 hover:text-green-800"
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => handleActivate(s.id, s.full_name ?? s.email ?? "")}>
                         Reactivate
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>

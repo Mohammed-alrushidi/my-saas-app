@@ -3,6 +3,7 @@
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { parseExcel, confirmImport, deleteImport, type PreviewData } from "./actions"
+import { Button } from "@/components/ui/button"
 
 const COLUMN_LABELS: Record<string, string> = {
   policy_no: "Policy No",
@@ -38,47 +39,37 @@ export default function UploadPage() {
             </p>
           )}
           <div className="flex gap-3 justify-center">
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-            >
+            <Button onClick={() => router.push("/dashboard")}>
               Back to dashboard
-            </button>
-            <button
-              onClick={() => {
-                setSuccess(null)
-                setPreview(null)
-                setError(null)
-                setFileName("")
-                if (fileRef.current) fileRef.current.value = ""
-              }}
-              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50"
-            >
+            </Button>
+            <Button variant="outline" onClick={() => {
+              setSuccess(null)
+              setPreview(null)
+              setError(null)
+              setFileName("")
+              if (fileRef.current) fileRef.current.value = ""
+            }}>
               Upload another
-            </button>
+            </Button>
             {success.importId && (
-              <button
-                onClick={async () => {
-                  if (!confirm("Undo this import? All imported records will be permanently deleted.")) return
-                  setLoading(true)
-                  const result = await deleteImport(success.importId!)
-                  if (result.success) {
-                    setSuccess(null)
-                    setPreview(null)
-                    setError(null)
-                    setFileName("")
-                    if (fileRef.current) fileRef.current.value = ""
-                    router.refresh()
-                  } else {
-                    setError(result.error ?? "Failed to undo import")
-                  }
-                  setLoading(false)
-                }}
-                disabled={loading}
-                className="rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-              >
+              <Button variant="destructive" onClick={async () => {
+                if (!confirm("Undo this import? All imported records will be permanently deleted.")) return
+                setLoading(true)
+                const result = await deleteImport(success.importId!)
+                if (result.success) {
+                  setSuccess(null)
+                  setPreview(null)
+                  setError(null)
+                  setFileName("")
+                  if (fileRef.current) fileRef.current.value = ""
+                  router.refresh()
+                } else {
+                  setError(result.error ?? "Failed to undo import")
+                }
+                setLoading(false)
+              }} disabled={loading}>
                 {loading ? "Undoing..." : "Undo import"}
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -111,13 +102,10 @@ export default function UploadPage() {
 
         {preview.errors.length > 0 && (
           <div className="mb-6 rounded-lg border">
-            <button
-              onClick={() => setShowErrors(!showErrors)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left font-medium hover:bg-gray-50"
-            >
+            <Button variant="ghost" onClick={() => setShowErrors(!showErrors)} className="flex w-full items-center justify-between px-4 py-3 text-left font-medium">
               <span>Validation errors ({preview.errors.length})</span>
               <span>{showErrors ? "\u25B2" : "\u25BC"}</span>
-            </button>
+            </Button>
             {showErrors && (
               <div className="max-h-64 overflow-y-auto border-t">
                 {preview.errors.map((err, idx) => (
@@ -164,51 +152,44 @@ export default function UploadPage() {
         )}
 
         <div className="flex gap-3">
-          <button
-            onClick={async () => {
-              setLoading(true)
-              setError(null)
+          <Button onClick={async () => {
+            setLoading(true)
+            setError(null)
 
-              if (!fileDataRef.current) {
-                setError("File not available. Please go back and re-select the file.")
-                setLoading(false)
-                return
-              }
-
-              const fd = new FormData()
-              fd.append("file", fileDataRef.current)
-
-              const result = await confirmImport(fd)
+            if (!fileDataRef.current) {
+              setError("File not available. Please go back and re-select the file.")
               setLoading(false)
+              return
+            }
 
-              if ("error" in result && result.error) {
-                setError(result.error)
-              } else if (result.success) {
-                setSuccess({
-                  total: preview.totalRows,
-                  valid: preview.validRows,
-                  invalid: preview.invalidRows,
-                  importId: (result as { importId?: string }).importId,
-                })
-              }
-            }}
-            disabled={loading}
-            className="rounded-md bg-black px-6 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-          >
+            const fd = new FormData()
+            fd.append("file", fileDataRef.current)
+
+            const result = await confirmImport(fd)
+            setLoading(false)
+
+            if ("error" in result && result.error) {
+              setError(result.error)
+            } else if (result.success) {
+              setSuccess({
+                total: preview.totalRows,
+                valid: preview.validRows,
+                invalid: preview.invalidRows,
+                importId: (result as { importId?: string }).importId,
+              })
+            }
+          }} disabled={loading}>
             {loading ? "Importing..." : "Confirm import"}
-          </button>
+          </Button>
 
-          <button
-            onClick={() => {
-              setPreview(null)
-              setError(null)
-              setFileName("")
-              if (fileRef.current) fileRef.current.value = ""
-            }}
-            className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50"
-          >
+          <Button variant="outline" onClick={() => {
+            setPreview(null)
+            setError(null)
+            setFileName("")
+            if (fileRef.current) fileRef.current.value = ""
+          }}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -262,13 +243,9 @@ export default function UploadPage() {
             <p className="mt-1 text-xs text-muted-foreground">Max 5000 rows. Required columns: Policy No, Customer Name, Mobile No, Policy Expiry Date, and more.</p>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-          >
+          <Button type="submit" disabled={loading} className="w-full">
             {loading ? "Parsing..." : "Preview import"}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

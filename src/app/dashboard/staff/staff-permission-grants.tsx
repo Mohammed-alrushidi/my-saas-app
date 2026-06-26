@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { revokeStaffPermission } from "./actions"
+import { Button } from "@/components/ui/button"
 
 const PERMISSION_LABELS: Record<string, string> = {
   "templates:edit": "Templates: Edit",
@@ -59,12 +60,9 @@ export default function StaffPermissionGrants({ grants, staffName, staffIsActive
             <span className="inline-block rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
               {PERMISSION_LABELS[g.permission] ?? g.permission}
             </span>
-            <button
-              onClick={() => setRevokingGrant(g)}
-              className="whitespace-nowrap text-xs text-red-600 hover:text-red-800"
-            >
+            <Button variant="ghost" size="sm" onClick={() => setRevokingGrant(g)}>
               Revoke
-            </button>
+            </Button>
           </div>
         ))}
       </div>
@@ -80,19 +78,12 @@ export default function StaffPermissionGrants({ grants, staffName, staffIsActive
             </p>
             {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
             <div className="flex justify-end gap-2">
-              <button
-                onClick={() => { setRevokingGrant(null); setError(null) }}
-                className="rounded border px-3 py-1.5 text-xs font-medium hover:bg-gray-100"
-              >
+              <Button variant="outline" size="sm" onClick={() => { setRevokingGrant(null); setError(null) }}>
                 Cancel
-              </button>
-              <button
-                onClick={handleRevoke}
-                disabled={revoking}
-                className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-              >
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleRevoke} disabled={revoking}>
                 {revoking ? "Revoking..." : "Revoke"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

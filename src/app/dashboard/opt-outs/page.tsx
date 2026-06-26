@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { listOptOuts, addOptOut, removeOptOut } from "./actions"
 import { getCurrentRole } from "../role-actions"
+import { Button } from "@/components/ui/button"
 import type { OptOutData } from "./actions"
 
 export default function OptOutsPage() {
@@ -64,12 +65,9 @@ export default function OptOutsPage() {
           </p>
         </div>
         {isAdmin && (
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
-          >
+          <Button onClick={() => setShowAddForm(true)}>
             Add Opt-Out
-          </button>
+          </Button>
         )}
       </div>
 
@@ -82,18 +80,12 @@ export default function OptOutsPage() {
             placeholder="Enter mobile number"
             className="flex-1 rounded border px-3 py-2 text-sm"
           />
-          <button
-            onClick={handleAdd}
-            className="rounded bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700"
-          >
+          <Button onClick={handleAdd}>
             Add
-          </button>
-          <button
-            onClick={() => { setShowAddForm(false); setNewMobile("") }}
-            className="rounded border px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-          >
+          </Button>
+          <Button variant="outline" onClick={() => { setShowAddForm(false); setNewMobile("") }}>
             Cancel
-          </button>
+          </Button>
         </div>
       )}
 
@@ -106,12 +98,9 @@ export default function OptOutsPage() {
           placeholder="Search by mobile number..."
           className="max-w-xs rounded border px-3 py-2 text-sm"
         />
-        <button
-          onClick={handleSearch}
-          className="rounded border px-4 py-2 text-sm hover:bg-gray-100"
-        >
+        <Button variant="outline" onClick={handleSearch}>
           Search
-        </button>
+        </Button>
       </div>
 
       {notification && (
@@ -121,7 +110,7 @@ export default function OptOutsPage() {
           }`}
         >
           {notification.message}
-          <button className="ml-3 font-bold" onClick={() => setNotification(null)}>x</button>
+          <Button variant="ghost" size="xs" className="ml-3 font-bold" onClick={() => setNotification(null)}>x</Button>
         </div>
       )}
 
@@ -152,12 +141,9 @@ export default function OptOutsPage() {
                   </td>
                   <td className="px-4 py-3">
                     {isAdmin && (
-                      <button
-                        onClick={() => handleRemove(o.id, o.mobile_no)}
-                        className="text-sm text-red-600 hover:text-red-800"
-                      >
+                      <Button variant="destructive" size="sm" onClick={() => handleRemove(o.id, o.mobile_no)}>
                         Remove
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>
