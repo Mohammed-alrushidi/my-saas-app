@@ -3,6 +3,7 @@
 import { deleteImport } from "@/app/dashboard/upload/actions"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { Button } from "@/components/ui/button"
 
 type Props = {
   importId: string
@@ -28,13 +29,14 @@ export function DeleteImportButton({ importId, fileName }: Props) {
         setDeleting(false)
       }}
     >
-      <button
+      <Button
+        variant="destructive"
+        size="sm"
         type="submit"
         disabled={deleting}
-        className="text-xs text-red-600 hover:text-red-800 hover:underline disabled:opacity-50"
       >
         {deleting ? "Deleting..." : "Delete"}
-      </button>
+      </Button>
     </form>
   )
 }

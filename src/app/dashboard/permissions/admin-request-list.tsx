@@ -7,6 +7,7 @@ import {
   rejectPermissionRequest,
   type CompanyPermissionRequest,
 } from "./actions"
+import { Button } from "@/components/ui/button"
 
 export default function AdminRequestList({
   initialPending,
@@ -94,20 +95,21 @@ export default function AdminRequestList({
                           disabled={actioning === r.id}
                         />
                         <div className="flex gap-1">
-                          <button
+                          <Button
                             onClick={() => handleApprove(r.id)}
                             disabled={actioning === r.id}
-                            className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                            size="sm"
                           >
                             {actioning === r.id ? "..." : "Approve"}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
                             onClick={() => handleReject(r.id)}
                             disabled={actioning === r.id}
-                            className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
                           >
                             Reject
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     </td>

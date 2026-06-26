@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react"
 import { signOut } from "@/app/login/actions"
+import { Button } from "@/components/ui/button"
 
 interface SidebarProps {
   role: string
@@ -93,13 +94,15 @@ export default function DashboardSidebar({ role, fullName, companyName, canPrepa
       )}
 
       {/* Hamburger button (mobile only) */}
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={() => setMobileOpen(true)}
-        className="fixed left-3 top-3 z-20 rounded-md bg-white p-2 shadow-md md:hidden"
+        className="fixed left-3 top-3 z-20 bg-white shadow-md md:hidden"
         aria-label="Open sidebar"
       >
         <Menu size={20} />
-      </button>
+      </Button>
 
       {/* Sidebar */}
       <nav
@@ -117,13 +120,15 @@ export default function DashboardSidebar({ role, fullName, companyName, canPrepa
           </div>
         </div>
 
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={close}
-          className="absolute right-3 top-3 rounded-md p-1 hover:bg-gray-200 md:hidden"
+          className="absolute right-3 top-3 md:hidden"
           aria-label="Close sidebar"
         >
           <X size={20} />
-        </button>
+        </Button>
 
         <div className="flex flex-col gap-1">
           {visibleItems.map((item) => {
@@ -168,13 +173,14 @@ export default function DashboardSidebar({ role, fullName, companyName, canPrepa
               </div>
             </div>
             <form action={signOut}>
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 type="submit"
-                className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 aria-label="Sign out"
               >
                 <LogOut size={16} aria-hidden="true" />
-              </button>
+              </Button>
             </form>
           </div>
           {companyName && (
