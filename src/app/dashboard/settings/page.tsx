@@ -77,9 +77,9 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-8">
       <h1 className="mb-2 text-2xl font-bold">Reminder Settings</h1>
-      <p className="mb-6 text-gray-500">
+      <p className="mb-6 text-sm text-muted-foreground">
         Configure when reminder messages are sent before a policy expires.
       </p>
 

@@ -159,10 +159,10 @@ export default function BroadcastPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Broadcast Message</h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           Select recipients and compose a message. Use {"{{customer_name}}"} and {"{{company_name}}"} variables.
         </p>
       </div>
@@ -348,7 +348,7 @@ export default function BroadcastPage() {
 
           {/* Message panel */}
           <div>
-            <div className="rounded-lg border p-4">
+            <div className="rounded-lg border p-6">
               <label className="mb-2 block text-sm font-medium">Message</label>
               <textarea
                 value={body}
@@ -379,7 +379,7 @@ export default function BroadcastPage() {
 
             {/* Selected count and preview */}
             {selectedCount > 0 && body.trim() && (
-              <div className="mt-4 rounded-lg border bg-white p-4">
+              <div className="mt-4 rounded-lg border bg-white p-6">
                 {sampleMessages.length > 0 && (
                   <p className="mb-2 text-sm font-medium">
                     Preview for {sampleMessages.length} of {selectedCount} selected

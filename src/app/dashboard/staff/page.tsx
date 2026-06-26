@@ -68,9 +68,9 @@ export default function StaffPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-8">
       <h1 className="mb-2 text-2xl font-bold">Staff Management</h1>
-      <p className="mb-6 text-sm text-gray-500">Invite and manage staff members in your company.</p>
+      <p className="mb-6 text-sm text-muted-foreground">Invite and manage staff members in your company.</p>
 
       {notification && (
         <div
@@ -83,7 +83,7 @@ export default function StaffPage() {
         </div>
       )}
 
-      <div className="mb-8 rounded-lg border p-4">
+      <div className="mb-8 rounded-lg border p-6">
         <h2 className="mb-3 text-lg font-semibold">Invite Staff</h2>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1">

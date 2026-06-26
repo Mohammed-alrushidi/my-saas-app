@@ -31,9 +31,9 @@ export default function MessagesPage() {
   ]
 
   return (
-    <div className="p-6">
+    <div className="p-8">
       <h1 className="mb-2 text-2xl font-bold">Messages</h1>
-      <p className="mb-6 text-sm text-gray-500">Preview and send messages to customers.</p>
+      <p className="mb-6 text-sm text-muted-foreground">Preview and send messages to customers.</p>
 
       <div className="mb-6 flex gap-1 border-b">
         {tabs.map((t) => (
@@ -334,7 +334,7 @@ function RenewalSection() {
       </Button>
 
       {preview && (
-        <div className="mt-4 rounded-lg border p-4">
+        <div className="mt-4 rounded-lg border p-6">
           {preview.error ? (
             <p className="text-sm text-red-600">{preview.error}</p>
           ) : preview.count === 0 ? (
@@ -416,7 +416,7 @@ function BirthdaySection() {
       </Button>
 
       {preview && (
-        <div className="mt-4 rounded-lg border p-4">
+        <div className="mt-4 rounded-lg border p-6">
           {preview.error ? (
             <p className="text-sm text-red-600">{preview.error}</p>
           ) : preview.count === 0 ? (

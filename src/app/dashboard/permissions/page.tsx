@@ -20,7 +20,7 @@ export default async function PermissionsPage() {
   const companyRequests = isAdmin ? await getCompanyPermissionRequests() : null
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8 p-4 sm:p-6">
+    <div className="mx-auto max-w-2xl space-y-8 p-8">
       <h1 className="text-2xl font-bold">Permission Requests</h1>
 
       {isStaff && <PermissionRequestForm />}
@@ -44,21 +44,21 @@ export default async function PermissionsPage() {
           {requests.length === 0 ? (
             <p className="text-sm text-muted-foreground">No requests yet.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-lg border">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="pb-2 pr-4 font-medium">Permission</th>
-                    <th className="pb-2 pr-4 font-medium">Status</th>
-                    <th className="pb-2 pr-4 font-medium">Submitted</th>
-                    <th className="pb-2 font-medium">Review Note</th>
+                  <tr className="border-b bg-gray-50 text-muted-foreground">
+                    <th className="px-4 py-3 font-medium">Permission</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Submitted</th>
+                    <th className="px-4 py-3 font-medium">Review Note</th>
                   </tr>
                 </thead>
                 <tbody>
                   {requests.map((r) => (
-                    <tr key={r.id} className="border-b last:border-0">
-                      <td className="py-2 pr-4">{r.permission}</td>
-                      <td className="py-2 pr-4">
+                    <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
+                      <td className="px-4 py-3">{r.permission}</td>
+                      <td className="px-4 py-3">
                         <span
                           className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                             r.status === "approved"
@@ -71,10 +71,10 @@ export default async function PermissionsPage() {
                           {r.status}
                         </span>
                       </td>
-                      <td className="py-2 pr-4 text-muted-foreground">
+                      <td className="px-4 py-3 text-muted-foreground">
                         {new Date(r.created_at).toLocaleDateString()}
                       </td>
-                      <td className="py-2 text-muted-foreground">
+                      <td className="px-4 py-3 text-muted-foreground">
                         {r.review_note || "—"}
                       </td>
                     </tr>

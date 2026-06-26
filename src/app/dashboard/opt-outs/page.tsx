@@ -56,11 +56,11 @@ export default function OptOutsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Opt-Outs</h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             Manage mobile numbers that have opted out of receiving messages.
           </p>
         </div>
@@ -72,7 +72,7 @@ export default function OptOutsPage() {
       </div>
 
       {showAddForm && (
-        <div className="mb-6 flex items-center gap-3 rounded-lg border p-4">
+        <div className="mb-6 flex items-center gap-3 rounded-lg border p-6">
           <input
             type="text"
             value={newMobile}

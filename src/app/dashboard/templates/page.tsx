@@ -74,7 +74,7 @@ function TemplateCard({
   }
 
   return (
-    <div className="rounded-lg border p-4">
+    <div className="rounded-lg border p-6">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">{TYPE_LABELS[template.template_type]}</h2>
@@ -145,22 +145,22 @@ export default function TemplatesPage() {
   }, [])
 
   if (loading) {
-    return <div className="p-6 text-gray-500">Loading templates...</div>
+    return <div className="p-8 text-gray-500">Loading templates...</div>
   }
 
   if (templates.length === 0) {
     return (
-      <div className="p-6">
+      <div className="p-8">
         <h1 className="mb-2 text-2xl font-bold">Message Templates</h1>
-        <p className="text-gray-500">No templates found. Please run the database migration.</p>
+        <p className="text-sm text-muted-foreground">No templates found. Please run the database migration.</p>
       </div>
     )
   }
 
   return (
-    <div className="p-6">
+    <div className="p-8">
       <h1 className="mb-2 text-2xl font-bold">Message Templates</h1>
-      <p className="mb-6 text-gray-500">
+      <p className="mb-6 text-sm text-muted-foreground">
         Edit the message templates used for sending WhatsApp messages to customers.
       </p>
 
@@ -183,7 +183,7 @@ export default function TemplatesPage() {
         ))}
       </div>
 
-      <div className="rounded-lg border p-4">
+      <div className="rounded-lg border p-6">
         <h2 className="mb-3 text-lg font-semibold">Available Variables</h2>
         <p className="mb-3 text-sm text-gray-500">
           Use these variables in your message body. They will be replaced with actual customer data when the message
@@ -192,18 +192,18 @@ export default function TemplatesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left">
-                <th className="pb-2 pr-4 font-medium">Variable</th>
-                <th className="pb-2 pr-4 font-medium">Description</th>
-                <th className="pb-2 font-medium">Available In</th>
+              <tr className="border-b bg-gray-50 text-left">
+                <th className="px-4 py-3 font-medium">Variable</th>
+                <th className="px-4 py-3 font-medium">Description</th>
+                <th className="px-4 py-3 font-medium">Available In</th>
               </tr>
             </thead>
             <tbody>
               {VARIABLES.map((v) => (
-                <tr key={v.variable} className="border-b last:border-0">
-                  <td className="py-2 pr-4 font-mono text-blue-600">{v.variable}</td>
-                  <td className="py-2 pr-4 text-gray-600">{v.description}</td>
-                  <td className="py-2 text-gray-600">
+                <tr key={v.variable} className="border-b last:border-0 hover:bg-gray-50">
+                  <td className="px-4 py-3 font-mono text-blue-600">{v.variable}</td>
+                  <td className="px-4 py-3 text-gray-600">{v.description}</td>
+                  <td className="px-4 py-3 text-gray-600">
                     {v.types.map((t) => TYPE_LABELS[t]).join(", ")}
                   </td>
                 </tr>
