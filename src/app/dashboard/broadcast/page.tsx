@@ -210,7 +210,7 @@ export default function BroadcastPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Recipients panel */}
           <div className="lg:col-span-2">
-            <div className="rounded-lg border">
+            <div className="rounded-lg border bg-card shadow-sm">
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <h2 className="text-sm font-semibold">
                   Recipients
@@ -348,7 +348,7 @@ export default function BroadcastPage() {
 
           {/* Message panel */}
           <div>
-            <div className="rounded-lg border p-6">
+            <div className="rounded-lg border bg-card shadow-sm p-6">
               <label className="mb-2 block text-sm font-medium">Message</label>
               <textarea
                 value={body}
@@ -379,7 +379,7 @@ export default function BroadcastPage() {
 
             {/* Selected count and preview */}
             {selectedCount > 0 && body.trim() && (
-              <div className="mt-4 rounded-lg border bg-white p-6">
+              <div className="mt-4 rounded-lg border bg-card shadow-sm p-6">
                 {sampleMessages.length > 0 && (
                   <p className="mb-2 text-sm font-medium">
                     Preview for {sampleMessages.length} of {selectedCount} selected

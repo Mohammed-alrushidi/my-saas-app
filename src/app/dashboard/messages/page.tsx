@@ -163,7 +163,7 @@ function HistorySection() {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-left">
@@ -334,7 +334,7 @@ function RenewalSection() {
       </Button>
 
       {preview && (
-        <div className="mt-4 rounded-lg border p-6">
+        <div className="mt-4 rounded-lg border bg-card shadow-sm p-6">
           {preview.error ? (
             <p className="text-sm text-red-600">{preview.error}</p>
           ) : preview.count === 0 ? (
@@ -416,7 +416,7 @@ function BirthdaySection() {
       </Button>
 
       {preview && (
-        <div className="mt-4 rounded-lg border p-6">
+        <div className="mt-4 rounded-lg border bg-card shadow-sm p-6">
           {preview.error ? (
             <p className="text-sm text-red-600">{preview.error}</p>
           ) : preview.count === 0 ? (

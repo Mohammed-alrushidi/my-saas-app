@@ -44,7 +44,7 @@ export default async function PermissionsPage() {
           {requests.length === 0 ? (
             <p className="text-sm text-muted-foreground">No requests yet.</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
+            <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b bg-gray-50 text-muted-foreground">

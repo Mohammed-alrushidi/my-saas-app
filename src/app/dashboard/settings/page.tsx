@@ -90,7 +90,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      <div className="max-w-lg rounded-lg border p-6">
+      <div className="max-w-lg rounded-lg border bg-card shadow-sm p-6">
         <div className="mb-6">
           <h2 className="mb-3 text-lg font-semibold">Reminder Days</h2>
           <p className="mb-3 text-sm text-gray-500">

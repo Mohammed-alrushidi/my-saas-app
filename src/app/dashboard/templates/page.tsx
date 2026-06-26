@@ -74,7 +74,7 @@ function TemplateCard({
   }
 
   return (
-    <div className="rounded-lg border p-6">
+    <div className="rounded-lg border bg-card shadow-sm p-6">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">{TYPE_LABELS[template.template_type]}</h2>
@@ -183,7 +183,7 @@ export default function TemplatesPage() {
         ))}
       </div>
 
-      <div className="rounded-lg border p-6">
+      <div className="rounded-lg border bg-card shadow-sm p-6">
         <h2 className="mb-3 text-lg font-semibold">Available Variables</h2>
         <p className="mb-3 text-sm text-gray-500">
           Use these variables in your message body. They will be replaced with actual customer data when the message

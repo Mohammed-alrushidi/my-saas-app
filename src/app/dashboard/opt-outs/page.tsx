@@ -72,7 +72,7 @@ export default function OptOutsPage() {
       </div>
 
       {showAddForm && (
-        <div className="mb-6 flex items-center gap-3 rounded-lg border p-6">
+        <div className="mb-6 flex items-center gap-3 rounded-lg border bg-card shadow-sm p-6">
           <input
             type="text"
             value={newMobile}
@@ -117,11 +117,11 @@ export default function OptOutsPage() {
       {loading ? (
         <p className="text-gray-500">Loading...</p>
       ) : optOuts.length === 0 ? (
-        <div className="rounded-lg border p-8 text-center text-gray-500">
+        <div className="rounded-lg border bg-card shadow-sm p-8 text-center text-gray-500">
           {search ? "No matching opt-outs found." : "No opt-outs yet. Click 'Add Opt-Out' to add one."}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-gray-50 text-left">

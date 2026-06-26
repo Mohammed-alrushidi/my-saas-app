@@ -60,7 +60,7 @@ export default function AdminRequestList({
         {pending.length === 0 ? (
           <p className="text-sm text-muted-foreground">No pending requests.</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-muted-foreground">
@@ -129,7 +129,7 @@ export default function AdminRequestList({
         {reviewed.length === 0 ? (
           <p className="text-sm text-muted-foreground">No reviewed requests yet.</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-muted-foreground">

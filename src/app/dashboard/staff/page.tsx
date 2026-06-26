@@ -83,7 +83,7 @@ export default function StaffPage() {
         </div>
       )}
 
-      <div className="mb-8 rounded-lg border p-6">
+      <div className="mb-8 rounded-lg border bg-card shadow-sm p-6">
         <h2 className="mb-3 text-lg font-semibold">Invite Staff</h2>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1">
@@ -118,11 +118,11 @@ export default function StaffPage() {
       {loading ? (
         <p className="text-gray-500">Loading...</p>
       ) : staff.length === 0 ? (
-        <div className="rounded-lg border p-8 text-center text-gray-500">
+        <div className="rounded-lg border bg-card shadow-sm p-8 text-center text-gray-500">
           No staff members yet. Invite your first staff member above.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-gray-50 text-left">
