@@ -41,3 +41,17 @@ Passed — all scenarios verified.
 - Company admin only can send broadcasts
 - Company admin can revoke active grants from Staff Management
 - Revoked permissions remove access after refresh
+
+---
+
+## Design Checkpoint — Complete (2026-06-27)
+
+Button unification done (7 commits). Spacing/table/text polish done. Card elevation done. Alert/dialog tokens done. See `docs/checkpoint-2026-06-27-stable-mock-broadcast.md` for full details.
+
+## Broadcast Fixes Checkpoint — Complete (2026-06-27)
+
+3 production bugs fixed: stuck send (try/catch/finally), Server Components render crash (removed `revalidatePath`, added layout/action guards). See checkpoint doc.
+
+## Mock WhatsApp Checkpoint — Complete (2026-06-27)
+
+`MOCK_MODE=true` enables mock provider (no real messages sent). Mock IDs prefixed `mock-sid-`. Sandbox UI notice shown. Missing Twilio creds without `MOCK_MODE` still errors. See checkpoint doc for guardrails and next steps.

@@ -37,6 +37,9 @@ Multi-tenant SaaS platform for insurance companies to upload Excel customer reco
 - Server-side role checks for all admin actions (super_admin and company_admin gates)
 - Super Admin platform dashboard with aggregate metrics (total companies, messages, imports, recent activity)
 - Super Admin sidebar navigation with active link highlighting
+- Design unification: buttons migrated to shadcn, spacing/table/text polish, card elevation, alert/dialog tokens
+- Broadcast production bug fixes: stuck send, Server Components render crash, safe server action patterns
+- Mock WhatsApp sandbox mode (`MOCK_MODE=true`) — test broadcasts without real messages
 
 ---
 
@@ -83,6 +86,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 | `SITE_URL` | Server-side URL for Twilio delivery callbacks | `http://localhost:3000` |
 | `NEXT_PUBLIC_SITE_URL` | Frontend URL for password reset redirects | `http://localhost:3000` |
 | `CRON_SECRET` | Secret token for cron endpoint auth | `[random string, e.g. openssl rand -hex 32]` |
+| `MOCK_MODE` | Enable mock WhatsApp provider (MVP/testing only — no real messages sent) | `true` |
 
 Never commit `.env.local` or expose these values.
 
@@ -106,6 +110,9 @@ This project uses the **Twilio WhatsApp Sandbox** for development and testing.
 - Sandbox sessions expire after 72 hours of inactivity (7 days with activity).
 - Works with only a handful of test numbers.
 - Messages include "Sent from a Twilio Sandbox" prefix.
+
+**Mock mode (MOCK_MODE):**
+For MVP/testing without Twilio, set `MOCK_MODE=true`. This uses a mock provider that simulates success without sending any real WhatsApp message. Mock IDs are prefixed with `mock-sid-`. No Twilio credentials are required when mock mode is enabled.
 
 **Production path:**
 For real customer messaging, upgrade to a production WhatsApp Business Account (WABA) through a Meta BSP. This requires business verification, WABA approval, and pre-approved message templates. This is currently postponed.
@@ -203,13 +210,13 @@ Compiles clean. Run this before pushing to verify no errors.
 npm test
 ```
 
-Uses vitest. **184 tests across 12 files:**
+Uses vitest. **185 tests across 12 files:**
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `validation.test.ts` | 19 | Excel upload parser — row limits, column validation, error reporting |
 | `messages-actions.test.ts` | 19 | Renewal preview/confirm, pagination & filters, Load More edge cases, "all" bypass, birthday preview/confirm, role rejection |
-| `broadcast-actions.test.ts` | 19 | Validation, role rejection, server-side eligible-only guard, send success, role-gated template loading, permission enforcement |
+| `broadcast-actions.test.ts` | 20 | Validation, role rejection, server-side eligible-only guard, send success, mock detect, role-gated template loading, permission enforcement |
 | `staff-actions.test.ts` | 12 | inviteStaff / deactivateStaff / activateStaff — revokeStaffPermission (8) + getCompanyStaffGrants (1) |
 | `templates-actions.test.ts` | 13 | saveTemplate / resetTemplate with permission enforcement (staff grant checks) |
 | `settings-actions.test.ts` | 12 | saveSettings / resetSettings with permission enforcement (staff grant checks) |
@@ -254,14 +261,15 @@ Uses vitest. **184 tests across 12 files:**
 - [x] Server-side role checks for all admin actions
 - [x] `.env.example` with documented variables and placeholders
 - [x] `docs/deployment.md` — full deployment and rollback checklist
-- [x] README updated with current test count (184), correct env vars, and production instructions
-- [x] All 184 tests passing, build clean
+- [x] README updated with current test count (185), correct env vars, and production instructions
+- [x] All 185 tests passing, build clean
 
 ### Remaining before production
 - [ ] **Twilio WABA production number** — requires Meta business verification, WABA approval, and template pre-approval
 - [ ] **Scheduler real provider call** — current scheduler marks messages as "sent" without calling WhatsApp
 - [ ] **UI-level polish** — consider empty states, loading skeletons, error boundaries
 - [ ] **Monitoring** — add error tracking (Sentry, etc.) and uptime monitoring
+- [ ] **Disable MOCK_MODE** — remove `MOCK_MODE=true` when real WhatsApp provider is configured and tested
 
 > **Important:** Do not enable the cron job on production data until the WhatsApp provider call is implemented (see `docs/deployment.md` §5).
 
@@ -269,11 +277,14 @@ Uses vitest. **184 tests across 12 files:**
 
 ## Current Roadmap
 
-1. **Testing: largely complete** — 184 tests across 12 files covering all flows plus role rejection, permission enforcement, and super admin dashboard.
+1. **Testing: largely complete** — 185 tests across 12 files covering all flows plus role rejection, permission enforcement, and super admin dashboard.
 2. **Scheduler MVP: complete** — Cron endpoint for renewal reminders and birthday greetings (Asia/Muscat timezone, exact-stage matching, dedupe, opted-out exclusion). Messages inserted as `status="sent"` — no real WhatsApp provider call yet.
 3. **Permission system: complete** — Staff can request permissions, admin approves/revokes, server enforcement, UI reflection. See `docs/permissions-ADR.md`.
-4. **Scheduler real provider integration** — Replace mock "sent" status with actual WhatsApp API call per message.
-5. **Production WhatsApp/WABA** — Remains postponed. Requires Meta BSP, business verification, WABA approval, and template pre-approval.
+4. **Design unification: complete** — Button unification, spacing/table/text polish, card elevation, alert/dialog tokens. See `docs/checkpoint-2026-06-27-stable-mock-broadcast.md`.
+5. **Broadcast production fixes: complete** — Stuck send fix, Server Components render crash fix, safe patterns. See checkpoint doc.
+6. **Mock WhatsApp mode: complete** — `MOCK_MODE=true` enables sandbox sending (MVP/testing only). No real messages sent.
+7. **Scheduler real provider integration** — Replace mock "sent" status with actual WhatsApp API call per message.
+8. **Production WhatsApp/WABA** — Remains postponed. Requires Meta BSP, business verification, WABA approval, and template pre-approval.
 
 ---
 
