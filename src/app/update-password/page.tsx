@@ -1,5 +1,6 @@
 "use client"
 
+import { Notice } from "@/components/ui/notice"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@supabase/ssr"
@@ -200,9 +201,9 @@ export default function UpdatePasswordPage() {
 
         {state === "success" && (
           <div className="space-y-4">
-            <div className="rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">
+            <Notice variant="success">
               Password set successfully! You can now sign in.
-            </div>
+            </Notice>
             <a
               href="/login"
               className="block w-full rounded-md bg-black px-4 py-2 text-sm font-medium text-white text-center hover:bg-gray-800"

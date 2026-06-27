@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { getSettings, saveSettings, resetSettings } from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
+import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -90,10 +91,10 @@ export default function SettingsPage() {
       </p>
 
       {!canEdit && role !== "company_admin" && (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <Notice variant="warning" className="mb-6">
           You don&apos;t have permission to edit settings.{" "}
           <Link href="/dashboard/permissions" className="underline font-medium">Request access</Link>.
-        </div>
+        </Notice>
       )}
 
       <div className="max-w-lg rounded-lg border bg-card shadow-sm p-6">

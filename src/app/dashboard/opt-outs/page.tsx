@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { listOptOuts, addOptOut, removeOptOut } from "./actions"
 import { getCurrentRole } from "../role-actions"
+import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Search, PhoneOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -106,14 +107,14 @@ export default function OptOutsPage() {
       </div>
 
       {notification && (
-        <div
-          className={`mb-4 rounded-md px-4 py-2 text-sm ${
-            notification.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-          }`}
+        <Notice
+          variant={notification.type === "success" ? "success" : "error"}
+          dismissible
+          onDismiss={() => setNotification(null)}
+          className="mb-4"
         >
           {notification.message}
-          <Button variant="ghost" size="xs" className="ml-3 font-bold" onClick={() => setNotification(null)}>x</Button>
-        </div>
+        </Notice>
       )}
 
       {loading ? (

@@ -5,6 +5,7 @@ import { listStaff, inviteStaff, deactivateStaff, activateStaff, getCompanyStaff
 import type { StaffMember } from "./actions"
 import StaffPermissionGrants from "./staff-permission-grants"
 import type { StaffPermissionGrant } from "./staff-permission-grants"
+import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -75,14 +76,14 @@ export default function StaffPage() {
       <p className="mb-6 text-sm text-muted-foreground">Invite and manage staff members in your company.</p>
 
       {notification && (
-        <div
-          className={`mb-4 rounded-md px-4 py-2 text-sm ${
-            notification.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-          }`}
+        <Notice
+          variant={notification.type === "success" ? "success" : "error"}
+          dismissible
+          onDismiss={() => setNotification(null)}
+          className="mb-4"
         >
           {notification.message}
-          <Button variant="ghost" size="xs" className="ml-3 font-bold" onClick={() => setNotification(null)}>x</Button>
-        </div>
+        </Notice>
       )}
 
       <div className="mb-8 rounded-lg border bg-card shadow-sm p-6">

@@ -3,6 +3,7 @@
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { parseExcel, confirmImport, deleteImport, type PreviewData } from "./actions"
+import { Notice } from "@/components/ui/notice"
 import { Button } from "@/components/ui/button"
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -205,7 +206,7 @@ export default function UploadPage() {
       </div>
 
       {error && (
-        <div className="mb-6 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
+        <Notice variant="error" className="mb-6">{error}</Notice>
       )}
 
       <div className="mx-auto max-w-lg rounded-lg border p-8">

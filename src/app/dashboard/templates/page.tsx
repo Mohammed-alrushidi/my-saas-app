@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { getTemplates, saveTemplate, resetTemplate } from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
+import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
 import { FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -171,10 +172,10 @@ export default function TemplatesPage() {
       </p>
 
       {!canEdit && role !== "company_admin" && (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <Notice variant="warning" className="mb-6">
           You don&apos;t have permission to edit templates.{" "}
           <Link href="/dashboard/permissions" className="underline font-medium">Request access</Link>.
-        </div>
+        </Notice>
       )}
 
       <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">

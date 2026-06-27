@@ -1,4 +1,5 @@
 import { getProfile, getCompanies } from "@/lib/supabase/queries"
+import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Building2 } from "lucide-react"
 import { redirect } from "next/navigation"
@@ -25,22 +26,22 @@ export default async function CompaniesPage(props: {
       </div>
 
       {searchParams.error && (
-        <div className="mb-6 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <Notice variant="error" className="mb-6">
           {searchParams.error}
-        </div>
+        </Notice>
       )}
 
       {searchParams.created && (
-        <div className="mb-6 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">
+        <Notice variant="success" className="mb-6">
           Company created successfully. A password reset email has been sent to the admin email address.
           The admin can follow the link to set their own password and log in.
-        </div>
+        </Notice>
       )}
 
       {searchParams.success && (
-        <div className="mb-6 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">
+        <Notice variant="success" className="mb-6">
           {searchParams.success}
-        </div>
+        </Notice>
       )}
 
       <div className="mb-8 rounded-lg border p-6">

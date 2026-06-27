@@ -1,3 +1,4 @@
+import { Notice } from "@/components/ui/notice"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { signIn } from "./actions"
@@ -35,9 +36,9 @@ export default async function LoginPage(props: { searchParams: Promise<{ error?:
         )}
 
         {searchParams.check_email && (
-          <div className="rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">
+          <Notice variant="success">
             Check your email for a confirmation link.
-          </div>
+          </Notice>
         )}
 
         <form className="space-y-4">

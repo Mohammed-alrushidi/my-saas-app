@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { loadBroadcastTemplate, getBroadcastRecipientsPaginated, confirmBroadcastSelected } from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
 import type { BroadcastRecipient, ConfirmResult } from "./actions"
+import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Search, Inbox } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -175,14 +176,14 @@ export default function BroadcastPage() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
+        <Notice variant="error" className="mb-4">{error}</Notice>
       )}
 
       {!canPrepare && role !== "company_admin" ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <Notice variant="warning">
           You don&apos;t have permission to prepare broadcasts.{" "}
           <Link href="/dashboard/permissions" className="underline font-medium">Request access</Link>.
-        </div>
+        </Notice>
       ) : result ? (
         <div className="max-w-2xl">
           {result.success ? (
