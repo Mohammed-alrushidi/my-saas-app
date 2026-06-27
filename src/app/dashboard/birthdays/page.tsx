@@ -1,4 +1,6 @@
 import { getProfile, getBirthdaysToday, getBirthdaysThisMonth } from "@/lib/supabase/queries"
+import { EmptyState } from "@/components/ui/empty-state"
+import { CalendarDays } from "lucide-react"
 import { redirect } from "next/navigation"
 
 export default async function BirthdaysPage(props: {
@@ -41,9 +43,11 @@ export default async function BirthdaysPage(props: {
 
       <div className="rounded-lg border">
         {records.length === 0 ? (
-          <div className="px-6 py-12 text-center text-sm text-muted-foreground">
-            {showToday ? "No birthdays today." : "No birthdays this month."}
-          </div>
+          showToday ? (
+            <EmptyState icon={CalendarDays} title="No birthdays today" />
+          ) : (
+            <EmptyState icon={CalendarDays} title="No birthdays this month" />
+          )
         ) : (
           <table className="w-full text-sm">
             <thead>

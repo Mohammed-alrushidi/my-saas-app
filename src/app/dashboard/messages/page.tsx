@@ -10,6 +10,8 @@ import {
 } from "./actions"
 import { getCurrentRole } from "../role-actions"
 import type { MessageRecord, PreviewResult, ConfirmResult } from "./actions"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Users, CalendarDays } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 type Tab = "history" | "renewal" | "birthday"
@@ -338,7 +340,7 @@ function RenewalSection() {
           {preview.error ? (
             <p className="text-sm text-red-600">{preview.error}</p>
           ) : preview.count === 0 ? (
-            <p className="text-sm text-gray-500">No eligible customers for this reminder day.</p>
+            <EmptyState icon={Users} title="No eligible customers" description="for this reminder day." />
           ) : (
             <>
               <p className="mb-3 text-sm font-medium">{preview.count} customer(s) will receive a reminder.</p>
@@ -420,7 +422,7 @@ function BirthdaySection() {
           {preview.error ? (
             <p className="text-sm text-red-600">{preview.error}</p>
           ) : preview.count === 0 ? (
-            <p className="text-sm text-gray-500">No birthdays today.</p>
+            <EmptyState icon={CalendarDays} title="No birthdays today" />
           ) : (
             <>
               <p className="mb-3 text-sm font-medium">{preview.count} customer(s) will receive a birthday greeting.</p>

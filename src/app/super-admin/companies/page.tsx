@@ -1,4 +1,6 @@
 import { getProfile, getCompanies } from "@/lib/supabase/queries"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Building2 } from "lucide-react"
 import { redirect } from "next/navigation"
 import { createCompany } from "./actions"
 import { CompanyToggleButton } from "@/components/company-toggle-button"
@@ -104,9 +106,7 @@ export default async function CompaniesPage(props: {
       <div className="rounded-lg border">
         <div className="border-b px-4 py-3 font-medium">All companies</div>
         {companies.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            No companies yet. Create your first company above.
-          </div>
+          <EmptyState icon={Building2} title="No companies yet" description="Create your first company above." />
         ) : (
           <div className="divide-y">
             {companies.map((company) => (

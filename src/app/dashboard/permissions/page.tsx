@@ -1,4 +1,6 @@
 import { getProfile } from "@/lib/supabase/queries"
+import { EmptyState } from "@/components/ui/empty-state"
+import { FileText } from "lucide-react"
 import { redirect } from "next/navigation"
 import { getMyPermissionRequests, getCompanyPermissionRequests } from "./actions"
 import PermissionRequestForm from "./permission-request-form"
@@ -42,7 +44,9 @@ export default async function PermissionsPage() {
         <section>
           <h2 className="mb-4 text-lg font-semibold">My Requests</h2>
           {requests.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No requests yet.</p>
+            <div className="rounded-lg border bg-card">
+              <EmptyState icon={FileText} title="No requests yet" />
+            </div>
           ) : (
             <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
               <table className="w-full text-left text-sm">

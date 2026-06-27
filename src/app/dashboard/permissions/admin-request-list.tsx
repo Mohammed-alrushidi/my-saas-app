@@ -7,6 +7,8 @@ import {
   rejectPermissionRequest,
   type CompanyPermissionRequest,
 } from "./actions"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Inbox, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export default function AdminRequestList({
@@ -58,7 +60,9 @@ export default function AdminRequestList({
       <section>
         <h2 className="mb-4 text-lg font-semibold">Pending Requests</h2>
         {pending.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No pending requests.</p>
+          <div className="rounded-lg border bg-card">
+            <EmptyState icon={Inbox} title="No pending requests" />
+          </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
             <table className="w-full text-left text-sm">
@@ -127,7 +131,9 @@ export default function AdminRequestList({
       <section>
         <h2 className="mb-4 text-lg font-semibold">Reviewed History</h2>
         {reviewed.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No reviewed requests yet.</p>
+          <div className="rounded-lg border bg-card">
+            <EmptyState icon={Clock} title="No reviewed requests yet" />
+          </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
             <table className="w-full text-left text-sm">

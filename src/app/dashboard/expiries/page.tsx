@@ -1,4 +1,6 @@
 import { getProfile, getUpcomingExpiries } from "@/lib/supabase/queries"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Calendar } from "lucide-react"
 import { redirect } from "next/navigation"
 
 export default async function ExpiriesPage(props: {
@@ -41,9 +43,7 @@ export default async function ExpiriesPage(props: {
 
       <div className="rounded-lg border">
         {records.length === 0 ? (
-          <div className="px-6 py-12 text-center text-sm text-muted-foreground">
-            No policies expiring within {selectedDays} days.
-          </div>
+          <EmptyState icon={Calendar} title={`No policies expiring within ${selectedDays} days.`} />
         ) : (
           <table className="w-full text-sm">
             <thead>

@@ -1,5 +1,7 @@
 import { getProfile, getCustomerRecordsCount, getActiveCustomerCount, getCompanyImports, getUpcomingExpiries, getExpiriesCount, getBirthdaysThisMonth, getBirthdaysToday } from "@/lib/supabase/queries"
 import { DeleteImportButton } from "@/components/delete-import-button"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Inbox, Calendar, CalendarDays, Upload } from "lucide-react"
 import { redirect } from "next/navigation"
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -51,8 +53,8 @@ export default async function DashboardPage() {
       </div>
 
       {noData && (
-        <div className="mb-6 rounded-md bg-blue-50 px-4 py-3 text-sm text-blue-700">
-          No customer records yet. Start by uploading an Excel file.
+        <div className="mb-6 rounded-lg border bg-card">
+          <EmptyState icon={Inbox} title="No customer records yet" description="Start by uploading an Excel file." />
         </div>
       )}
 
@@ -97,7 +99,7 @@ export default async function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No policies expiring in the next 30 days.</p>
+              <EmptyState icon={Calendar} title="No policies expiring" description="in the next 30 days." />
             )}
           </div>
         )}
@@ -122,7 +124,7 @@ export default async function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No birthdays this month.</p>
+              <EmptyState icon={CalendarDays} title="No birthdays this month" />
             )}
           </div>
         )}
@@ -133,7 +135,7 @@ export default async function DashboardPage() {
             <a href="/dashboard/upload" className="text-xs font-medium text-blue-600 hover:underline">Upload</a>
           </div>
           {recentImports.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No imports yet.</p>
+            <EmptyState icon={Upload} title="No imports yet" />
           ) : (
             <div className="space-y-2">
               {recentImports.slice(0, 5).map((imp) => (

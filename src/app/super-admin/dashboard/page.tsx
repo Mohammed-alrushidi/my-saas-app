@@ -1,4 +1,6 @@
 import { getPlatformDashboardData } from "./data"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Building2, Upload } from "lucide-react"
 
 function formatDateShort(dateStr: string): string {
   try {
@@ -64,7 +66,7 @@ export default async function SuperAdminDashboardPage() {
             Recent companies
           </h2>
           {data.recentCompanies.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No companies yet.</p>
+            <EmptyState icon={Building2} title="No companies yet" />
           ) : (
             <div className="space-y-2">
               {data.recentCompanies.map((c) => (
@@ -90,7 +92,7 @@ export default async function SuperAdminDashboardPage() {
             Recent imports
           </h2>
           {data.recentImports.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No imports yet.</p>
+            <EmptyState icon={Upload} title="No imports yet" />
           ) : (
             <div className="space-y-2">
               {data.recentImports.map((imp) => (

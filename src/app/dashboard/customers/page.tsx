@@ -1,4 +1,6 @@
 import { getProfile } from "@/lib/supabase/queries"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Search, Inbox } from "lucide-react"
 import { redirect } from "next/navigation"
 import { searchCustomers } from "./actions"
 import { Button } from "@/components/ui/button"
@@ -73,11 +75,11 @@ export default async function CustomersPage(props: {
 
       <div className="rounded-lg border">
         {customers.length === 0 ? (
-          <div className="px-6 py-12 text-center text-sm text-muted-foreground">
-            {query || status !== "all"
-              ? "No customers match your search."
-              : "No customer records yet. Upload an Excel file to get started."}
-          </div>
+          query || status !== "all" ? (
+            <EmptyState icon={Search} title="No customers match your search" />
+          ) : (
+            <EmptyState icon={Inbox} title="No customer records yet" description="Upload an Excel file to get started." />
+          )
         ) : (
           <>
             <table className="w-full text-sm">

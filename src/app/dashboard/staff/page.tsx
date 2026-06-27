@@ -5,6 +5,8 @@ import { listStaff, inviteStaff, deactivateStaff, activateStaff, getCompanyStaff
 import type { StaffMember } from "./actions"
 import StaffPermissionGrants from "./staff-permission-grants"
 import type { StaffPermissionGrant } from "./staff-permission-grants"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export default function StaffPage() {
@@ -118,8 +120,8 @@ export default function StaffPage() {
       {loading ? (
         <p className="text-gray-500">Loading...</p>
       ) : staff.length === 0 ? (
-        <div className="rounded-lg border bg-card shadow-sm p-8 text-center text-gray-500">
-          No staff members yet. Invite your first staff member above.
+        <div className="rounded-lg border bg-card">
+          <EmptyState icon={Users} title="No staff members yet" description="Invite your first staff member above." />
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
