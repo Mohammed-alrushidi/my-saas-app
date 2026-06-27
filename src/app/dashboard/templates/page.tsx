@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { getTemplates, saveTemplate, resetTemplate } from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
+import { EmptyState } from "@/components/ui/empty-state"
+import { FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { TemplateData } from "./actions"
 
@@ -152,7 +154,11 @@ export default function TemplatesPage() {
     return (
       <div className="p-8">
         <h1 className="mb-2 text-2xl font-bold">Message Templates</h1>
-        <p className="text-sm text-muted-foreground">No templates found. Please run the database migration.</p>
+        <EmptyState
+          icon={FileText}
+          title="No templates configured"
+          description="Templates are required before sending messages. Run the database seed to create default templates."
+        />
       </div>
     )
   }

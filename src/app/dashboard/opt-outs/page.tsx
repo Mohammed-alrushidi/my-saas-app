@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react"
 import { listOptOuts, addOptOut, removeOptOut } from "./actions"
 import { getCurrentRole } from "../role-actions"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Search, PhoneOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { OptOutData } from "./actions"
 
@@ -117,9 +119,11 @@ export default function OptOutsPage() {
       {loading ? (
         <p className="text-gray-500">Loading...</p>
       ) : optOuts.length === 0 ? (
-        <div className="rounded-lg border bg-card shadow-sm p-8 text-center text-gray-500">
-          {search ? "No matching opt-outs found." : "No opt-outs yet. Click 'Add Opt-Out' to add one."}
-        </div>
+        <EmptyState
+          icon={search ? Search : PhoneOff}
+          title={search ? "No matching opt-outs found" : "No opt-outs yet"}
+          description={search ? undefined : "Opt-out numbers will appear here once customers opt out."}
+        />
       ) : (
         <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
           <table className="w-full text-sm">

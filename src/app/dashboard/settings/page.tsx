@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { getSettings, saveSettings, resetSettings } from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { SettingsData } from "./actions"
 
@@ -69,9 +71,13 @@ export default function SettingsPage() {
 
   if (!settings) {
     return (
-      <div className="p-6">
+      <div className="p-8">
         <h1 className="mb-2 text-2xl font-bold">Reminder Settings</h1>
-        <p className="text-gray-500">No settings found. Please run the database migration.</p>
+        <EmptyState
+          icon={Settings}
+          title="No settings found"
+          description="Reminder settings need to be configured before automated reminders can run. Run the database seed to create default settings."
+        />
       </div>
     )
   }

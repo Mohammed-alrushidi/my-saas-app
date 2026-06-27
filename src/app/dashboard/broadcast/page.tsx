@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation"
 import { loadBroadcastTemplate, getBroadcastRecipientsPaginated, confirmBroadcastSelected } from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
 import type { BroadcastRecipient, ConfirmResult } from "./actions"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Search, Inbox } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const MAX_RECIPIENTS = 50
@@ -269,11 +271,11 @@ export default function BroadcastPage() {
               {recipientsLoading ? (
                 <div className="p-6 text-center text-sm text-gray-500">Loading recipients...</div>
               ) : recipients.length === 0 ? (
-                <div className="p-6 text-center text-sm text-gray-500">
-                  {activeQuery
-                    ? "No customers match your search."
-                    : "No customers found. Import customers first."}
-                </div>
+                <EmptyState
+                  icon={activeQuery ? Search : Inbox}
+                  title={activeQuery ? "No customers match your search" : "No customers found"}
+                  description={activeQuery ? undefined : "Import customers to get started."}
+                />
               ) : (
                 <div className="max-h-[400px] overflow-auto">
                   <table className="w-full text-sm">
