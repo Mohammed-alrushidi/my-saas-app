@@ -395,16 +395,16 @@ It appears in exactly these locations and no others:
 
 ---
 
-## 14. Future Implementation Phases
+## 14. Implementation Phases
 
-| Phase | Scope | Components Changed |
-|-------|-------|-------------------|
-| **D1** | Update CSS tokens | `globals.css` only — set `--primary` to navy, add `--accent-communication` |
-| **D2** | Typography | `layout.tsx` — add heading font via `next/font/google`; `globals.css` — update `--font-heading`; page titles — add `font-heading` class |
-| **D3** | Unify buttons | All page files — replace raw `<button>` with shadcn `<Button>` component |
-| **D4** | Consistent spacing | All page files — unify padding to `p-8`; replace hardcoded `text-gray-500` with `text-muted-foreground` |
-| **D5** | Sidebar refresh | `dashboard-sidebar.tsx` — implement amber accent on broadcast/messages active icon |
-| **D6** | Empty state component | Create reusable `EmptyState` component; replace inline empty state JSX in all pages |
-| **D7** | Communication accent | `broadcast/page.tsx`, `messages/page.tsx` — apply amber accent to send/confirm buttons and badges |
-| **D8** | Card elevation | All page files — add `shadow-sm` to content cards |
-| **D9** | Modal consolidation | Create reusable `ConfirmDialog`; replace inline modals in broadcast, permission grants, messages |
+| Phase | Scope | Components Changed | Status |
+|-------|-------|-------------------|--------|
+| **D1** | Update CSS tokens | `globals.css` only — set `--primary` to navy, add `--accent-communication` | ✅ Completed |
+| **D2** | Typography | `layout.tsx` — add heading font via `next/font/google`; `globals.css` — update `--font-heading`; page titles — add `font-heading` class | Pending |
+| **D3** | Unify buttons | All page files — replace raw `<button>` with shadcn `<Button>` component | ✅ Completed (7 commits) |
+| **D4** | Consistent spacing | All page files — unify padding to `p-8`; replace hardcoded `text-gray-500` with `text-muted-foreground` | ✅ Completed (partial — main pages done, some edge pages remain) |
+| **D5** | Sidebar refresh | `dashboard-sidebar.tsx` — implement amber accent on broadcast/messages active icon | Pending |
+| **D6** | Empty state component | Create reusable `EmptyState` component; replace inline empty state JSX in all pages | Pending |
+| **D7** | Communication accent | `broadcast/page.tsx`, `messages/page.tsx` — apply amber accent to send/confirm buttons and badges | Pending |
+| **D8** | Card elevation | All page files — add `shadow-sm` to content cards | ✅ Completed |
+| **D9** | Modal consolidation / Alert & Dialog tokens | Create reusable `ConfirmDialog`; replace inline modals in broadcast, permission grants, messages | 🔶 Partial — alert/dialog token polish completed; full modal consolidation still pending |
