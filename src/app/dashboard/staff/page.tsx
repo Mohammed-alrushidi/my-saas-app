@@ -143,7 +143,7 @@ export default function StaffPage() {
                   <td className="px-4 py-3">{s.email}</td>
                   <td className="px-4 py-3">
                     <span
-                      className={`rounded px-2 py-0.5 text-xs font-medium ${
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                         s.is_active
                           ? "bg-green-100 text-green-700"
                           : "bg-gray-100 text-gray-600"

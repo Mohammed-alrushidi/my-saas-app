@@ -119,7 +119,7 @@ export default async function CompaniesPage(props: {
                   <div className="mt-1">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                       company.subscription_status === "active"
-                        ? "bg-green-50 text-green-700"
+                        ? "bg-green-100 text-green-700"
                         : company.subscription_status === "trial"
                         ? "bg-blue-50 text-blue-700"
                         : "bg-gray-50 text-gray-500"

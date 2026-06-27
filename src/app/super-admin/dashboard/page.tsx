@@ -17,7 +17,7 @@ function formatDateShort(dateStr: string): string {
 function statusBadgeClass(status: string): string {
   switch (status) {
     case "active":
-      return "bg-green-50 text-green-700"
+      return "bg-green-100 text-green-700"
     case "trial":
       return "bg-blue-50 text-blue-700"
     default:
@@ -28,7 +28,7 @@ function statusBadgeClass(status: string): string {
 function importStatusBadgeClass(status: string): string {
   switch (status) {
     case "completed":
-      return "bg-green-50 text-green-700"
+      return "bg-green-100 text-green-700"
     case "processing":
       return "bg-blue-50 text-blue-700"
     default:

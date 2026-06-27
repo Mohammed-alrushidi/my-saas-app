@@ -13,9 +13,9 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const STATUS_CLASSES: Record<string, string> = {
-  allowed: "text-green-600 bg-green-50",
-  invalid_number: "text-red-600 bg-red-50",
-  opted_out: "text-orange-600 bg-orange-50",
+  allowed: "bg-green-100 text-green-700",
+  invalid_number: "bg-red-100 text-red-700",
+  opted_out: "bg-orange-100 text-orange-700",
 }
 
 export default async function CustomersPage(props: {
