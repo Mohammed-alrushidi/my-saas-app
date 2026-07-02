@@ -18,6 +18,7 @@ export default function UpdatePasswordPage() {
   const [errorDescription, setErrorDescription] = useState("")
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- URL hash is only available after mount; this effect intentionally syncs reset-link UI state. */
     const hash = window.location.hash.replace(/^#/, "")
     const params = new URLSearchParams(hash)
     const accessToken = params.get("access_token")
@@ -59,6 +60,7 @@ export default function UpdatePasswordPage() {
         setEmail(data.session.user.email ?? "")
         setState("form")
       })
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
