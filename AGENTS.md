@@ -146,7 +146,8 @@ Do not assume approval of one stage authorizes later stages.
 - Never expose, rotate, copy, or print secrets or credentials.
 - Do not change Supabase RLS without explicit high-risk review and approval.
 - Do not change production data or infrastructure without explicit approval.
-- Do not deploy without explicit approval.
+- Automatic preview deployments triggered by an approved PR are allowed for review and testing.
+- Production deployment always requires explicit Mohammed approval.
 - Do not run destructive commands unless explicitly approved.
 - Do not delete unrelated files, data, migrations, branches, or features.
 
