@@ -11,6 +11,7 @@ import {
 import { getCurrentRole } from "../role-actions"
 import type { MessageRecord, PreviewResult, ConfirmResult } from "./actions"
 import { EmptyState } from "@/components/ui/empty-state"
+import { Notice } from "@/components/ui/notice"
 import { Users, CalendarDays, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -363,13 +364,11 @@ function RenewalSection() {
       )}
 
       {result && (
-        <div className={`mt-4 rounded-md px-4 py-3 text-sm ${
-          result.success ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-        }`}>
+        <Notice variant={result.success ? "success" : "error"} className="mt-4">
           {result.success
             ? `${result.sent} renewal message(s) sent. ${result.skipped} skipped (already sent).`
             : result.error}
-        </div>
+        </Notice>
       )}
     </div>
   )
@@ -445,11 +444,9 @@ function BirthdaySection() {
       )}
 
       {result && (
-        <div className={`mt-4 rounded-md px-4 py-3 text-sm ${
-          result.success ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-        }`}>
+        <Notice variant={result.success ? "success" : "error"} className="mt-4">
           {result.success ? `${result.sent} birthday message(s) sent.` : result.error}
-        </div>
+        </Notice>
       )}
     </div>
   )
