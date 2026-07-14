@@ -29,8 +29,8 @@ export function CompanyToggleButton({ companyId, isActive }: Props) {
         onClick={() => setShowConfirm(true)}
         className={`rounded-md px-3 py-1.5 text-xs font-medium ${
           isActive
-            ? "bg-red-50 text-red-600 hover:bg-red-100"
-            : "bg-green-50 text-green-600 hover:bg-green-100"
+            ? "bg-red-100 text-red-700 hover:bg-red-100"
+            : "bg-green-100 text-green-700 hover:bg-green-100"
         }`}
       >
         {label}

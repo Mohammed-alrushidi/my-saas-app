@@ -121,11 +121,12 @@ function TemplateCard({
         </div>
       )}
       {showNotification && (
-        <span
-          className={`text-sm ${showNotification.type === "success" ? "text-green-600" : "text-red-600"}`}
+        <Notice
+          variant={showNotification.type === "success" ? "success" : "error"}
+          className="mt-3"
         >
           {showNotification.message}
-        </span>
+        </Notice>
       )}
     </div>
   )
@@ -148,7 +149,7 @@ export default function TemplatesPage() {
   }, [])
 
   if (loading) {
-    return <div className="p-8 text-gray-500">Loading templates...</div>
+    return <div className="p-6 text-sm text-gray-500">Loading templates...</div>
   }
 
   if (templates.length === 0) {
@@ -166,10 +167,12 @@ export default function TemplatesPage() {
 
   return (
     <div className="p-8">
-      <h1 className="mb-2 text-2xl font-bold">Message Templates</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Edit the message templates used for sending WhatsApp messages to customers.
-      </p>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Message Templates</h1>
+        <p className="text-sm text-muted-foreground">
+          Edit the message templates used for sending WhatsApp messages to customers.
+        </p>
+      </div>
 
       {!canEdit && role !== "company_admin" && (
         <Notice variant="warning" className="mb-6">

@@ -41,9 +41,9 @@ export default async function SuperAdminDashboardPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold">Platform Dashboard</h1>
-        <p className="text-muted-foreground">Overview of all companies on the platform</p>
+        <p className="text-sm text-muted-foreground">Overview of all companies on the platform</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

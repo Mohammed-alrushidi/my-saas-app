@@ -20,9 +20,9 @@ export default async function CompaniesPage(props: {
 
   return (
     <div className="p-8">
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold">Companies</h1>
-        <p className="text-muted-foreground">Manage insurance companies on the platform</p>
+        <p className="text-sm text-muted-foreground">Manage insurance companies on the platform</p>
       </div>
 
       {searchParams.error && (

@@ -22,7 +22,7 @@ export default async function ExpiriesPage(props: {
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Upcoming Expiries</h1>
-        <p className="text-muted-foreground">Customer policies expiring within the selected period</p>
+        <p className="text-sm text-muted-foreground">Customer policies expiring within the selected period</p>
       </div>
 
       <div className="mb-6 flex gap-2">

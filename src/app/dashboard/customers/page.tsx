@@ -36,7 +36,7 @@ export default async function CustomersPage(props: {
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Customers</h1>
-        <p className="text-muted-foreground">Search and view imported customer records</p>
+        <p className="text-sm text-muted-foreground">Search and view imported customer records</p>
       </div>
 
       <form className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end" method="GET">
