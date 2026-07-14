@@ -19,7 +19,7 @@ export default async function BirthdaysPage(props: {
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Birthdays</h1>
-        <p className="text-muted-foreground">Customer birthdays to send greetings</p>
+        <p className="text-sm text-muted-foreground">Customer birthdays to send greetings</p>
       </div>
 
       <div className="mb-6 flex gap-2">

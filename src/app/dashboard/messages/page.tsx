@@ -35,8 +35,10 @@ export default function MessagesPage() {
 
   return (
     <div className="p-8">
-      <h1 className="mb-2 text-2xl font-bold">Messages</h1>
-      <p className="mb-6 text-sm text-muted-foreground">Preview and send messages to customers.</p>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Messages</h1>
+        <p className="text-sm text-muted-foreground">Preview and send messages to customers.</p>
+      </div>
 
       <div className="mb-6 flex gap-1 border-b">
         {tabs.map((t) => (
