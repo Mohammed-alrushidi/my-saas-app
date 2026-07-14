@@ -17,9 +17,19 @@ export function getProvider(): MessageProvider {
     const isMock = process.env.MOCK_MODE === "true"
 
     if (isMock) {
-      console.info("MOCK_MODE enabled — using mock provider. No real WhatsApp messages will be sent.")
+      console.info(
+        "MOCK_MODE enabled — using mock provider. No real WhatsApp messages will be sent.",
+      )
       provider = new MockWhatsAppProvider()
       return provider
+    }
+
+    const liveEnabled = process.env.WHATSAPP_LIVE_ENABLED === "true"
+
+    if (!liveEnabled) {
+      throw new Error(
+        "Real WhatsApp provider is not enabled. Set WHATSAPP_LIVE_ENABLED=true to activate the live provider.",
+      )
     }
 
     const accountSid = process.env.TWILIO_ACCOUNT_SID
@@ -33,16 +43,26 @@ export function getProvider(): MessageProvider {
       )
     }
 
-    const isLocalhost = siteUrl?.includes("localhost") || siteUrl?.includes("127.0.0.1") || siteUrl?.includes("0.0.0.0")
+    const isLocalhost =
+      siteUrl?.includes("localhost") ||
+      siteUrl?.includes("127.0.0.1") ||
+      siteUrl?.includes("0.0.0.0")
     const statusCallbackUrl = siteUrl && !isLocalhost
       ? `${siteUrl.replace(/\/+$/, "")}/api/messaging/status`
       : undefined
 
     if (!statusCallbackUrl) {
-      console.warn("SITE_URL not set or is localhost — delivery status callbacks will not be sent by Twilio")
+      console.warn(
+        "SITE_URL not set or is localhost — delivery status callbacks will not be sent by Twilio",
+      )
     }
 
-    provider = new TwilioWhatsAppProvider(accountSid, authToken, from, statusCallbackUrl)
+    provider = new TwilioWhatsAppProvider(
+      accountSid,
+      authToken,
+      from,
+      statusCallbackUrl,
+    )
   }
   return provider
 }

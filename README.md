@@ -87,6 +87,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 | `NEXT_PUBLIC_SITE_URL` | Frontend URL for password reset redirects | `http://localhost:3000` |
 | `CRON_SECRET` | Secret token for cron endpoint auth | `[random string, e.g. openssl rand -hex 32]` |
 | `MOCK_MODE` | Enable mock WhatsApp provider (MVP/testing only — no real messages sent) | `true` |
+| `WHATSAPP_LIVE_ENABLED` | Explicit second safety gate required in addition to `MOCK_MODE=false` before real WhatsApp sending is allowed | `false` |
 
 Never commit `.env.local` or expose these values.
 
