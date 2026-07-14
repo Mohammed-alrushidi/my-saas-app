@@ -67,13 +67,15 @@ export default function SettingsPage() {
   }
 
   if (loading) {
-    return <div className="p-6 text-gray-500">Loading settings...</div>
+    return <div className="p-6 text-sm text-gray-500">Loading settings...</div>
   }
 
   if (!settings) {
     return (
       <div className="p-8">
-        <h1 className="mb-2 text-2xl font-bold">Reminder Settings</h1>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold">Reminder Settings</h1>
+        </div>
         <EmptyState
           icon={Settings}
           title="No settings found"
@@ -85,10 +87,12 @@ export default function SettingsPage() {
 
   return (
     <div className="p-8">
-      <h1 className="mb-2 text-2xl font-bold">Reminder Settings</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Configure when reminder messages are sent before a policy expires.
-      </p>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Reminder Settings</h1>
+        <p className="text-sm text-muted-foreground">
+          Configure when reminder messages are sent before a policy expires.
+        </p>
+      </div>
 
       {!canEdit && role !== "company_admin" && (
         <Notice variant="warning" className="mb-6">
@@ -144,9 +148,14 @@ export default function SettingsPage() {
           </div>
         )}
         {notification && (
-          <span className={`text-sm ${notification.type === "success" ? "text-green-600" : "text-red-600"}`}>
+          <Notice
+            variant={notification.type === "success" ? "success" : "error"}
+            className="mt-3"
+            dismissible
+            onDismiss={() => setNotification(null)}
+          >
             {notification.message}
-          </span>
+          </Notice>
         )}
       </div>
     </div>

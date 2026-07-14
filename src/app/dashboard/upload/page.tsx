@@ -198,9 +198,9 @@ export default function UploadPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold">Upload Excel</h1>
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Upload a .xlsx or .xls file with your customer records
         </p>
       </div>

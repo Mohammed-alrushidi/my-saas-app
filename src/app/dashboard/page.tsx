@@ -45,11 +45,9 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Welcome, {profile.full_name || profile.email}
-        </p>
+        <p className="text-sm text-muted-foreground">Welcome, {profile.full_name || profile.email}</p>
       </div>
 
       {noData && (

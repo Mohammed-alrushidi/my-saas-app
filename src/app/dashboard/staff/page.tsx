@@ -72,8 +72,10 @@ export default function StaffPage() {
 
   return (
     <div className="p-8">
-      <h1 className="mb-2 text-2xl font-bold">Staff Management</h1>
-      <p className="mb-6 text-sm text-muted-foreground">Invite and manage staff members in your company.</p>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Staff Management</h1>
+        <p className="text-sm text-muted-foreground">Invite and manage staff members in your company.</p>
+      </div>
 
       {notification && (
         <Notice
@@ -119,7 +121,7 @@ export default function StaffPage() {
       </div>
 
       {loading ? (
-        <p className="text-gray-500">Loading...</p>
+        <div className="p-6 text-sm text-gray-500">Loading...</div>
       ) : staff.length === 0 ? (
         <div className="rounded-lg border bg-card">
           <EmptyState icon={Users} title="No staff members yet" description="Invite your first staff member above." />

@@ -163,7 +163,7 @@ export default function BroadcastPage() {
   const readyToSend = body.trim() && selectedCount > 0 && !overLimit && !sending
 
   if (!pageReady) {
-    return <div className="p-6 text-gray-500">Loading...</div>
+    return <div className="p-6 text-sm text-gray-500">Loading...</div>
   }
 
   return (
