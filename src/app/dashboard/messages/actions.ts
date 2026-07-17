@@ -315,7 +315,7 @@ async function getEligibleBirthdays() {
     })
     .sort((a, b) => String(a.driver_dob).localeCompare(String(b.driver_dob)))
 
-  const { date, startUtc, endUtcExclusive } = getMuscatBusinessDayBounds()
+  const { startUtc, endUtcExclusive } = getMuscatBusinessDayBounds()
 
   const { data: existingMessages, error: existingErr } = await supabase
     .from("messages")

@@ -53,7 +53,6 @@ type CompanyRow = { id: string; name: string }
 export async function runScheduler(): Promise<SchedulerResult> {
   const supabase = createAdminClient()
   const result: SchedulerResult = { companiesProcessed: 0, renewalSent: 0, birthdaySent: 0, errors: [] }
-  const { date, startISO, endISO } = getLocalDayBoundaries()
 
   const { data: companies, error: companiesErr } = await supabase
     .from("companies")
