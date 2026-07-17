@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getMuscatBusinessDayBounds, type MuscatBusinessDayBounds } from "@/lib/dates/muscat-day"
 
 export type SchedulerResult = {
   companiesProcessed: number
@@ -7,11 +8,8 @@ export type SchedulerResult = {
   errors: string[]
 }
 
-function getLocalDayBoundaries(): { date: string; startISO: string; endISO: string } {
-  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Muscat" }).format(new Date())
-  const start = new Date(`${date}T00:00:00+04:00`)
-  const end = new Date(`${date}T23:59:59.999+04:00`)
-  return { date, startISO: start.toISOString(), endISO: end.toISOString() }
+function getLocalDayBoundaries(): MuscatBusinessDayBounds {
+  return getMuscatBusinessDayBounds()
 }
 
 export function addDaysToDate(dateStr: string, days: number): string {
@@ -55,7 +53,6 @@ type CompanyRow = { id: string; name: string }
 export async function runScheduler(): Promise<SchedulerResult> {
   const supabase = createAdminClient()
   const result: SchedulerResult = { companiesProcessed: 0, renewalSent: 0, birthdaySent: 0, errors: [] }
-  const { date, startISO, endISO } = getLocalDayBoundaries()
 
   const { data: companies, error: companiesErr } = await supabase
     .from("companies")
@@ -72,7 +69,8 @@ export async function runScheduler(): Promise<SchedulerResult> {
   for (const company of companies as CompanyRow[]) {
     try {
       result.companiesProcessed++
-      await processCompany(supabase, company, date, startISO, endISO, result)
+      const bounds = getLocalDayBoundaries()
+      await processCompany(supabase, company, bounds.businessDate, bounds.startUtc, bounds.endUtcExclusive, result)
     } catch (err) {
       result.errors.push(`Company ${company.id}: ${err instanceof Error ? err.message : "Unknown error"}`)
     }
@@ -85,8 +83,8 @@ async function processCompany(
   supabase: ReturnType<typeof createAdminClient>,
   company: CompanyRow,
   date: string,
-  startISO: string,
-  endISO: string,
+  startUtc: string,
+  endUtcExclusive: string,
   result: SchedulerResult,
 ): Promise<void> {
   const { data: settings } = await supabase
@@ -97,8 +95,8 @@ async function processCompany(
 
   if (!settings || !settings.is_active) return
 
-  await processRenewals(supabase, company, settings.reminder_days as number[], date, startISO, endISO, result)
-  await processBirthdays(supabase, company, date, startISO, endISO, result)
+  await processRenewals(supabase, company, settings.reminder_days as number[], date, startUtc, endUtcExclusive, result)
+  await processBirthdays(supabase, company, date, startUtc, endUtcExclusive, result)
 }
 
 async function processRenewals(
@@ -106,8 +104,8 @@ async function processRenewals(
   company: CompanyRow,
   reminderDays: number[],
   date: string,
-  startISO: string,
-  endISO: string,
+  startUtc: string,
+  endUtcExclusive: string,
   result: SchedulerResult,
 ): Promise<void> {
   const { data: template } = await supabase
@@ -137,8 +135,8 @@ async function processRenewals(
       .eq("company_id", company.id)
       .eq("message_type", "renewal")
       .eq("reminder_stage", days)
-      .gte("created_at", startISO)
-      .lte("created_at", endISO)
+      .gte("created_at", startUtc)
+      .lt("created_at", endUtcExclusive)
 
     const existingKeys = new Set(existing?.map((m) => m.customer_record_id) ?? [])
     const eligible = (customers as CustomerRecord[]).filter((c) => !existingKeys.has(c.id))
@@ -173,8 +171,8 @@ async function processBirthdays(
   supabase: ReturnType<typeof createAdminClient>,
   company: CompanyRow,
   date: string,
-  startISO: string,
-  endISO: string,
+  startUtc: string,
+  endUtcExclusive: string,
   result: SchedulerResult,
 ): Promise<void> {
   const { data: template } = await supabase
@@ -212,8 +210,8 @@ async function processBirthdays(
     .select("customer_record_id")
     .eq("company_id", company.id)
     .eq("message_type", "birthday")
-    .gte("created_at", startISO)
-    .lte("created_at", endISO)
+    .gte("created_at", startUtc)
+    .lt("created_at", endUtcExclusive)
 
   const existingKeys = new Set(existing?.map((m) => m.customer_record_id) ?? [])
   const eligible = customers.filter((c) => !existingKeys.has(c.id))

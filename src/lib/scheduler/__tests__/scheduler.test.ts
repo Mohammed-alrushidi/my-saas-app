@@ -10,6 +10,7 @@ const mockChain: any = {
   eq: vi.fn(() => mockChain),
   gte: vi.fn(() => mockChain),
   lte: vi.fn(() => mockChain),
+  lt: vi.fn(() => mockChain),
   not: vi.fn(() => mockChain),
   order: vi.fn(() => mockChain),
   range: vi.fn(() => mockChain),
@@ -20,6 +21,14 @@ const mockChain: any = {
   then: vi.fn((onfulfilled: any) =>
     Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue).then(onfulfilled)),
 }
+
+vi.mock("@/lib/dates/muscat-day", () => ({
+  getMuscatBusinessDayBounds: () => ({
+    businessDate: "2026-06-19",
+    startUtc: "2026-06-18T20:00:00.000Z",
+    endUtcExclusive: "2026-06-19T20:00:00.000Z",
+  }),
+}))
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(() => mockChain),
@@ -113,8 +122,6 @@ describe("runScheduler", () => {
   })
 
   it("processes birthdays for today", async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date("2026-06-19T00:00:00+04:00"))
 
     mockResponseQueue.push(
       { data: [{ id: "c1", name: "Birthday Co" }], error: null },
@@ -134,8 +141,6 @@ describe("runScheduler", () => {
     expect(inserted[0].customer_record_id).toBe("b1")
     expect(inserted[0].message_type).toBe("birthday")
     expect(inserted[0].status).toBe("sent")
-
-    vi.useRealTimers()
   })
 
   it("dedup: old message from another day does not block today's run", async () => {
@@ -183,9 +188,6 @@ describe("runScheduler", () => {
   })
 
   it("skips renewals when no renewal template exists", async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date("2026-06-19T00:00:00+04:00"))
-
     mockResponseQueue.push(
       { data: [{ id: "c1", name: "No Template Co" }], error: null },
       { data: { reminder_days: [14], is_active: true }, error: null },
@@ -199,8 +201,6 @@ describe("runScheduler", () => {
 
     expect(result.renewalSent).toBe(0)
     expect(result.birthdaySent).toBe(1)
-
-    vi.useRealTimers()
   })
 
   it("skips company when reminder_settings is inactive", async () => {

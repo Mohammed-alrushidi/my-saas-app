@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getProfile } from "@/lib/supabase/queries"
 import { sendMessages } from "@/lib/messaging/send"
+import { getMuscatBusinessDayBounds } from "@/lib/dates/muscat-day"
 
 function renderTemplate(
   body: string,
@@ -314,15 +315,15 @@ async function getEligibleBirthdays() {
     })
     .sort((a, b) => String(a.driver_dob).localeCompare(String(b.driver_dob)))
 
-  const today = todayStr()
+  const { startUtc, endUtcExclusive } = getMuscatBusinessDayBounds()
 
   const { data: existingMessages, error: existingErr } = await supabase
     .from("messages")
     .select("customer_record_id")
     .eq("company_id", profile.company_id)
     .eq("message_type", "birthday")
-    .gte("created_at", `${today}T00:00:00Z`)
-    .lte("created_at", `${today}T23:59:59Z`)
+    .gte("created_at", startUtc)
+    .lt("created_at", endUtcExclusive)
 
   if (existingErr) return { customers, companyName, companyId: profile.company_id, template, templateError, customerError: existingErr.message, existingKeys: new Set<string>(), role: profile.role }
 
