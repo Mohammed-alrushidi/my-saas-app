@@ -13,6 +13,7 @@ function createQueryBuilder() {
     eq: vi.fn(() => builder),
     gte: vi.fn(() => builder),
     lte: vi.fn(() => builder),
+    lt: vi.fn(() => builder),
     order: vi.fn(() => builder),
     not: vi.fn(() => builder),
     in: vi.fn(() => Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue)),
