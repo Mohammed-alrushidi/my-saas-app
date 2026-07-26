@@ -292,7 +292,11 @@ async function getEligibleBirthdays() {
   const templateError = templateErr?.message ?? null
   const companyName = (profile as any).companies?.name ?? ""
 
-  // Fetch customers with non-null driver_dob (no LIKE on date column)
+  // Fetch customers with non-null driver_dob aligned to Muscat business date
+  const bounds = getMuscatBusinessDayBounds()
+  const businessDate = bounds.businessDate
+  const [matchMonth, matchDay] = businessDate.split("-").slice(1)
+
   const { data: allCustomers, error: customersErr } = await supabase
     .from("customer_records")
     .select("*")
@@ -302,20 +306,15 @@ async function getEligibleBirthdays() {
 
   if (customersErr) return { customers: [], companyName, companyId: profile.company_id, template, templateError, customerError: customersErr.message, existingKeys: new Set<string>(), role: profile.role }
 
-  // Filter by today's month and day in JS (avoids LIKE on date column)
-  const now = new Date()
-  const monthStr = String(now.getMonth() + 1).padStart(2, "0")
-  const dayStr = String(now.getDate()).padStart(2, "0")
-
   const customers = (allCustomers ?? [])
     .filter((c) => {
       if (!c.driver_dob) return false
       const parts = String(c.driver_dob).split("-")
-      return parts[1] === monthStr && parts[2] === dayStr
+      return parts[1] === matchMonth && parts[2] === matchDay
     })
     .sort((a, b) => String(a.driver_dob).localeCompare(String(b.driver_dob)))
 
-  const { startUtc, endUtcExclusive } = getMuscatBusinessDayBounds()
+  const { startUtc, endUtcExclusive } = bounds
 
   const { data: existingMessages, error: existingErr } = await supabase
     .from("messages")
