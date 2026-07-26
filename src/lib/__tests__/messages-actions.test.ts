@@ -65,6 +65,7 @@ beforeEach(() => {
 })
 
 import { previewRenewal, confirmRenewal, getMessageHistory, previewBirthdays, confirmBirthdays, previewBroadcast, confirmBroadcast } from "@/app/dashboard/messages/actions"
+import { getMuscatBusinessDayBounds } from "@/lib/dates/muscat-day"
 
 describe("previewRenewal", () => {
   it("rejects non-admin role", async () => {
@@ -416,131 +417,181 @@ describe("getMessageHistory", () => {
 
 describe("previewBirthdays", () => {
   it("returns sample messages for today's birthdays only", async () => {
-    const now = new Date()
-    const monthStr = String(now.getMonth() + 1).padStart(2, "0")
-    const dayStr = String(now.getDate()).padStart(2, "0")
+    // Deterministic: pin system time so getMuscatBusinessDayBounds() (which uses
+    // new Date() internally) is reproducible and matches the fixtures.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-01T12:00:00Z"))
+    try {
+      const { businessDate } = getMuscatBusinessDayBounds()
+      const [monthStr, dayStr] = businessDate.split("-").slice(1)
 
-    const tomorrow = new Date(now)
-    tomorrow.setDate(now.getDate() + 1)
-    const nonMatchMonth = String(tomorrow.getMonth() + 1).padStart(2, "0")
-    const nonMatchDay = String(tomorrow.getDate()).padStart(2, "0")
+      const tomorrow = new Date("2026-07-02T12:00:00Z")
+      const [nonMatchMonth, nonMatchDay] = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Muscat" }).format(tomorrow).split("-").slice(1)
 
-    const mockCustomers = [
-      { id: "c1", customer_name: "Ahmed", mobile_no: "+96891111111", driver_dob: `2000-${monthStr}-${dayStr}`, communication_status: "allowed" },
-      { id: "c2", customer_name: "Fatima", mobile_no: "+96892222222", driver_dob: `1995-${monthStr}-${dayStr}`, communication_status: "allowed" },
-      { id: "c3", customer_name: "Said", mobile_no: "+96893333333", driver_dob: `2000-${nonMatchMonth}-${nonMatchDay}`, communication_status: "allowed" },
-    ]
+      const mockCustomers = [
+        { id: "c1", customer_name: "Ahmed", mobile_no: "+96891111111", driver_dob: `2000-${monthStr}-${dayStr}`, communication_status: "allowed" },
+        { id: "c2", customer_name: "Fatima", mobile_no: "+96892222222", driver_dob: `1995-${monthStr}-${dayStr}`, communication_status: "allowed" },
+        { id: "c3", customer_name: "Said", mobile_no: "+96893333333", driver_dob: `2000-${nonMatchMonth}-${nonMatchDay}`, communication_status: "allowed" },
+      ]
 
-    const mockTemplate = {
-      body: "Happy birthday {{customer_name}}! - {{company_name}}",
-      name: "Birthday Greeting",
+      const mockTemplate = {
+        body: "Happy birthday {{customer_name}}! - {{company_name}}",
+        name: "Birthday Greeting",
+      }
+
+      mockResponseQueue.push(
+        { data: { user: { id: "test-user-id" } }, error: null },
+        { data: { id: "test-user-id", company_id: "test-company-id", role: "company_admin", companies: { name: "Test Company" } }, error: null },
+        { data: mockTemplate, error: null },
+        { data: mockCustomers, error: null },
+        { data: [], error: null },
+      )
+
+      const result = await previewBirthdays()
+
+      expect(result.error).toBeUndefined()
+      expect(result.count).toBe(2)
+      expect(result.sample).toHaveLength(2)
+
+      const ahmed = result.sample.find(s => s.mobile === "+96891111111")
+      expect(ahmed).toBeDefined()
+      expect(ahmed!.body).toContain("Ahmed")
+      expect(ahmed!.body).toContain("Test Company")
+
+      const fatima = result.sample.find(s => s.mobile === "+96892222222")
+      expect(fatima).toBeDefined()
+      expect(fatima!.body).toContain("Fatima")
+      expect(fatima!.body).toContain("Test Company")
+
+      expect(mockSendMessages).not.toHaveBeenCalled()
+      expect(revalidatePath).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
     }
+  })
 
-    mockResponseQueue.push(
-      { data: { user: { id: "test-user-id" } }, error: null },
-      { data: { id: "test-user-id", company_id: "test-company-id", role: "company_admin", companies: { name: "Test Company" } }, error: null },
-      { data: mockTemplate, error: null },
-      { data: mockCustomers, error: null },
-      { data: [], error: null },
-    )
+  it("selects the Muscat business date, not the UTC/server calendar date, across the midnight boundary", async () => {
+    // At 2026-07-01T20:30:00Z the UTC calendar date is 2026-07-01, but the
+    // Muscat business date has rolled over to 2026-07-02. Eligibility must
+    // follow Muscat: the 07-02 customer is eligible; the 07-01 customer
+    // (server-local/UTC date) must NOT be selected by birthday matching.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-01T20:30:00Z"))
+    try {
+      const { businessDate } = getMuscatBusinessDayBounds()
+      expect(businessDate).toBe("2026-07-02")
 
-    const result = await previewBirthdays()
+      const [muscatMonth, muscatDay] = businessDate.split("-").slice(1)
+      const mockCustomers = [
+        { id: "c1", customer_name: "MuscatBirthday", mobile_no: "+96891111111", driver_dob: `2000-${muscatMonth}-${muscatDay}`, communication_status: "allowed" },
+        { id: "c2", customer_name: "UtcBirthdayOnly", mobile_no: "+96892222222", driver_dob: "2000-07-01", communication_status: "allowed" },
+      ]
 
-    expect(result.error).toBeUndefined()
-    expect(result.count).toBe(2)
-    expect(result.sample).toHaveLength(2)
+      const mockTemplate = {
+        body: "Happy birthday {{customer_name}}! - {{company_name}}",
+        name: "Birthday Greeting",
+      }
 
-    const ahmed = result.sample.find(s => s.mobile === "+96891111111")
-    expect(ahmed).toBeDefined()
-    expect(ahmed!.body).toContain("Ahmed")
-    expect(ahmed!.body).toContain("Test Company")
+      mockResponseQueue.push(
+        { data: { user: { id: "test-user-id" } }, error: null },
+        { data: { id: "test-user-id", company_id: "test-company-id", role: "company_admin", companies: { name: "Test Company" } }, error: null },
+        { data: mockTemplate, error: null },
+        { data: mockCustomers, error: null },
+        { data: [], error: null },
+      )
 
-    const fatima = result.sample.find(s => s.mobile === "+96892222222")
-    expect(fatima).toBeDefined()
-    expect(fatima!.body).toContain("Fatima")
-    expect(fatima!.body).toContain("Test Company")
+      const result = await previewBirthdays()
 
-    expect(mockSendMessages).not.toHaveBeenCalled()
-    expect(revalidatePath).not.toHaveBeenCalled()
+      expect(result.error).toBeUndefined()
+      expect(result.count).toBe(1)
+      expect(result.sample).toHaveLength(1)
+      expect(result.sample[0].mobile).toBe("+96891111111")
+      expect(result.sample[0].body).toContain("MuscatBirthday")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
 describe("confirmBirthdays", () => {
   it("sends birthday messages to eligible customers and inserts records", async () => {
-    const now = new Date()
-    const monthStr = String(now.getMonth() + 1).padStart(2, "0")
-    const dayStr = String(now.getDate()).padStart(2, "0")
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-01T12:00:00Z"))
+    try {
+      const { businessDate } = getMuscatBusinessDayBounds()
+      const [monthStr, dayStr] = businessDate.split("-").slice(1)
 
-    const tomorrow = new Date(now)
-    tomorrow.setDate(now.getDate() + 1)
-    const nonMatchMonth = String(tomorrow.getMonth() + 1).padStart(2, "0")
-    const nonMatchDay = String(tomorrow.getDate()).padStart(2, "0")
+      const tomorrow = new Date("2026-07-02T12:00:00Z")
+      const [nonMatchMonth, nonMatchDay] = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Muscat" }).format(tomorrow).split("-").slice(1)
 
-    const mockCustomers = [
-      { id: "c1", customer_name: "Ahmed", mobile_no: "+96891111111", driver_dob: `2000-${monthStr}-${dayStr}`, communication_status: "allowed" },
-      { id: "c2", customer_name: "Fatima", mobile_no: "+96892222222", driver_dob: `1995-${monthStr}-${dayStr}`, communication_status: "allowed" },
-      { id: "c3", customer_name: "Said", mobile_no: "+96893333333", driver_dob: `2000-${nonMatchMonth}-${nonMatchDay}`, communication_status: "allowed" },
-    ]
+      const mockCustomers = [
+        { id: "c1", customer_name: "Ahmed", mobile_no: "+96891111111", driver_dob: `2000-${monthStr}-${dayStr}`, communication_status: "allowed" },
+        { id: "c2", customer_name: "Fatima", mobile_no: "+96892222222", driver_dob: `1995-${monthStr}-${dayStr}`, communication_status: "allowed" },
+        { id: "c3", customer_name: "Said", mobile_no: "+96893333333", driver_dob: `2000-${nonMatchMonth}-${nonMatchDay}`, communication_status: "allowed" },
+      ]
 
-    const mockTemplate = {
-      body: "Happy birthday {{customer_name}}! - {{company_name}}",
-      name: "Birthday Greeting",
+      const mockTemplate = {
+        body: "Happy birthday {{customer_name}}! - {{company_name}}",
+        name: "Birthday Greeting",
+      }
+
+      mockResponseQueue.push(
+        { data: { user: { id: "test-user-id" } }, error: null },
+        { data: { id: "test-user-id", company_id: "test-company-id", role: "company_admin", companies: { name: "Test Company" } }, error: null },
+        { data: mockTemplate, error: null },
+        { data: mockCustomers, error: null },
+        { data: [], error: null },
+      )
+
+      const result = await confirmBirthdays()
+
+      expect(result.success).toBe(true)
+      expect(result.sent).toBe(2)
+      expect(result.skipped).toBe(0)
+      expect(result.error).toBeUndefined()
+
+      expect(mockSendMessages).toHaveBeenCalledTimes(1)
+      const recipients = mockSendMessages.mock.calls[0][0]
+      expect(recipients).toHaveLength(2)
+
+      const ahmedR = recipients.find((r: any) => r.mobile === "+96891111111")
+      expect(ahmedR).toBeDefined()
+      expect(ahmedR.body).toContain("Ahmed")
+      expect(ahmedR.body).toContain("Test Company")
+
+      const fatimaR = recipients.find((r: any) => r.mobile === "+96892222222")
+      expect(fatimaR).toBeDefined()
+      expect(fatimaR.body).toContain("Fatima")
+      expect(fatimaR.body).toContain("Test Company")
+
+      expect(revalidatePath).toHaveBeenCalledWith("/dashboard/messages")
+
+      const insertBuilder = mockChain.from.mock.results.at(-1)!.value
+      const inserted = insertBuilder.insert.mock.calls[0][0]
+      expect(inserted).toHaveLength(2)
+      expect(inserted).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          customer_record_id: "c1",
+          company_id: "test-company-id",
+          recipient_mobile: "+96891111111",
+          message_type: "birthday",
+          status: "sent",
+          provider_message_id: "mock-sid",
+          template_used: "Birthday Greeting",
+        }),
+        expect.objectContaining({
+          customer_record_id: "c2",
+          company_id: "test-company-id",
+          recipient_mobile: "+96892222222",
+          message_type: "birthday",
+          status: "sent",
+          provider_message_id: "mock-sid",
+          template_used: "Birthday Greeting",
+        }),
+      ]))
+    } finally {
+      vi.useRealTimers()
     }
-
-    mockResponseQueue.push(
-      { data: { user: { id: "test-user-id" } }, error: null },
-      { data: { id: "test-user-id", company_id: "test-company-id", role: "company_admin", companies: { name: "Test Company" } }, error: null },
-      { data: mockTemplate, error: null },
-      { data: mockCustomers, error: null },
-      { data: [], error: null },
-    )
-
-    const result = await confirmBirthdays()
-
-    expect(result.success).toBe(true)
-    expect(result.sent).toBe(2)
-    expect(result.skipped).toBe(0)
-    expect(result.error).toBeUndefined()
-
-    expect(mockSendMessages).toHaveBeenCalledTimes(1)
-    const recipients = mockSendMessages.mock.calls[0][0]
-    expect(recipients).toHaveLength(2)
-
-    const ahmedR = recipients.find((r: any) => r.mobile === "+96891111111")
-    expect(ahmedR).toBeDefined()
-    expect(ahmedR.body).toContain("Ahmed")
-    expect(ahmedR.body).toContain("Test Company")
-
-    const fatimaR = recipients.find((r: any) => r.mobile === "+96892222222")
-    expect(fatimaR).toBeDefined()
-    expect(fatimaR.body).toContain("Fatima")
-    expect(fatimaR.body).toContain("Test Company")
-
-    expect(revalidatePath).toHaveBeenCalledWith("/dashboard/messages")
-
-    const insertBuilder = mockChain.from.mock.results.at(-1)!.value
-    const inserted = insertBuilder.insert.mock.calls[0][0]
-    expect(inserted).toHaveLength(2)
-    expect(inserted).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        customer_record_id: "c1",
-        company_id: "test-company-id",
-        recipient_mobile: "+96891111111",
-        message_type: "birthday",
-        status: "sent",
-        provider_message_id: "mock-sid",
-        template_used: "Birthday Greeting",
-      }),
-      expect.objectContaining({
-        customer_record_id: "c2",
-        company_id: "test-company-id",
-        recipient_mobile: "+96892222222",
-        message_type: "birthday",
-        status: "sent",
-        provider_message_id: "mock-sid",
-        template_used: "Birthday Greeting",
-      }),
-    ]))
   })
 })
 
