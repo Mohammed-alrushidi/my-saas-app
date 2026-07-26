@@ -197,6 +197,131 @@ describe("confirmRenewal", () => {
   })
 })
 
+describe("Manual Renewal dedup (Muscat business day)", () => {
+  const FIXED_TIME = new Date("2026-07-15T10:00:00Z")
+
+  function pushRenewalQueue(existingMessages: any[]) {
+    mockResponseQueue.push(
+      { data: { reminder_days: [30] }, error: null },
+      { count: 1, data: null, error: null },
+      { data: [{ id: "c1", customer_name: "Ahmed", mobile_no: "+96891111111", policy_expiry_date: "2026-08-14", veh_make_model: "Toyota Camry" }], error: null },
+      { data: existingMessages, error: null },
+      { data: { body: "Hi {{customer_name}}", name: "Renewal" }, error: null },
+    )
+  }
+
+  it("blocks same customer+stage when message exists within current Muscat day", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_TIME)
+    try {
+      pushRenewalQueue([{ customer_record_id: "c1" }])
+
+      const result = await previewRenewal(30)
+
+      expect(result.count).toBe(0)
+      expect(result.sample).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("allows customer when no message exists in current Muscat day window", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_TIME)
+    try {
+      pushRenewalQueue([])
+
+      const result = await previewRenewal(30)
+
+      expect(result.count).toBe(1)
+      expect(result.sample).toHaveLength(1)
+      expect(result.sample[0].mobile).toBe("+96891111111")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("different reminder_stage remains independently eligible", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_TIME)
+    try {
+      pushRenewalQueue([{ customer_record_id: "c1" }])
+
+      const result = await previewRenewal(30)
+
+      // The mock returns a message for c1 at stage=30, so c1 is blocked.
+      // But if the existing message were for stage=14, c1 would still be eligible
+      // because the query filters by reminder_stage=30.
+      // This test verifies that the dedup query includes .eq("reminder_stage", days).
+      const messagesBuilder = mockChain.from.mock.results[3].value
+      expect(messagesBuilder.eq).toHaveBeenCalledWith("reminder_stage", 30)
+
+      expect(result.count).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("different customer_record_id remains independently eligible", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_TIME)
+    try {
+      pushRenewalQueue([{ customer_record_id: "c2" }])
+
+      const result = await previewRenewal(30)
+
+      expect(result.count).toBe(1)
+      expect(result.sample).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("uses exact Muscat startUtc and endUtcExclusive in the dedup query", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_TIME)
+    try {
+      const { startUtc, endUtcExclusive } = getMuscatBusinessDayBounds()
+
+      pushRenewalQueue([])
+
+      await previewRenewal(30)
+
+      const messagesBuilder = mockChain.from.mock.results[3].value
+      expect(messagesBuilder.gte).toHaveBeenCalledWith("created_at", startUtc)
+      expect(messagesBuilder.lt).toHaveBeenCalledWith("created_at", endUtcExclusive)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("Birthday and Broadcast behavior is not modified by renewal dedup change", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_TIME)
+    try {
+      const { businessDate } = getMuscatBusinessDayBounds()
+      const [monthStr, dayStr] = businessDate.split("-").slice(1)
+
+      const mockCustomers = [
+        { id: "c1", customer_name: "Ahmed", mobile_no: "+96891111111", driver_dob: `2000-${monthStr}-${dayStr}`, communication_status: "allowed" },
+      ]
+
+      mockResponseQueue.push(
+        { data: { user: { id: "test-user-id" } }, error: null },
+        { data: { id: "test-user-id", company_id: "test-company-id", role: "company_admin", companies: { name: "Test Company" } }, error: null },
+        { data: { body: "Happy birthday {{customer_name}}!", name: "Birthday" }, error: null },
+        { data: mockCustomers, error: null },
+        { data: [], error: null },
+      )
+
+      const result = await previewBirthdays()
+      expect(result.count).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe("getMessageHistory", () => {
   it("returns 50 messages and hasMore true when supabase returns 51 rows", async () => {
     const mockRows = Array.from({ length: 51 }, (_, i) => ({

@@ -160,12 +160,16 @@ async function getEligibleRenewals(days: number) {
 
   if (!customers || customers.length === 0) return { customers: [], companyName: "", template: null, existingKeys: new Set<string>(), totalInRange: totalInRange ?? 0 }
 
+  const { startUtc, endUtcExclusive } = getMuscatBusinessDayBounds()
+
   const { data: existingMessages } = await supabase
     .from("messages")
     .select("customer_record_id")
     .eq("company_id", profile.company_id)
     .eq("message_type", "renewal")
     .eq("reminder_stage", days)
+    .gte("created_at", startUtc)
+    .lt("created_at", endUtcExclusive)
 
   const existingKeys = new Set(existingMessages?.map((m) => m.customer_record_id) ?? [])
 
