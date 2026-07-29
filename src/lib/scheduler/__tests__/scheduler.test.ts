@@ -17,7 +17,7 @@ const mockChain: any = {
   limit: vi.fn(() => mockChain),
   single: vi.fn(() => Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue)),
   maybeSingle: vi.fn(() => Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue)),
-  insert: vi.fn(() => Promise.resolve({ error: null })),
+  insert: vi.fn(() => Promise.resolve(mockResponseQueue.shift() ?? { error: null })),
   then: vi.fn((onfulfilled: any) =>
     Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue).then(onfulfilled)),
 }
@@ -81,7 +81,8 @@ describe("runScheduler", () => {
       { data: { body: "Renewal reminder for {{customer_name}}", name: "Renewal" }, error: null },
       { data: [{ id: "cust1", customer_name: "Ahmed", mobile_no: "+968111", policy_expiry_date: "2026-07-03", veh_make_model: "Toyota" }], error: null },
       { data: [], error: null },
-      { data: [], error: null },
+      { error: null },
+      { data: null, error: null },
     )
 
     const result = await runScheduler()
@@ -93,12 +94,12 @@ describe("runScheduler", () => {
 
     expect(mockChain.insert).toHaveBeenCalledTimes(1)
     const inserted = mockChain.insert.mock.calls[0][0]
-    expect(inserted).toHaveLength(1)
-    expect(inserted[0].customer_record_id).toBe("cust1")
-    expect(inserted[0].reminder_stage).toBe(14)
-    expect(inserted[0].message_type).toBe("renewal")
-    expect(inserted[0].status).toBe("sent")
-    expect(inserted[0].message_body).toContain("Ahmed")
+    expect(inserted.customer_record_id).toBe("cust1")
+    expect(inserted.reminder_stage).toBe(14)
+    expect(inserted.message_type).toBe("renewal")
+    expect(inserted.status).toBe("sent")
+    expect(inserted.message_body).toContain("Ahmed")
+    expect(inserted.idempotency_key).toBe("scheduler:renewal:c1:cust1:14:2026-06-19")
   })
 
   it("does not include customers from other stages (exact match proof)", async () => {
@@ -108,8 +109,9 @@ describe("runScheduler", () => {
       { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
       { data: [{ id: "cust30", customer_name: "Thirty", mobile_no: "+96830", policy_expiry_date: "2026-07-19" }], error: null },
       { data: [], error: null },
-      { data: [], error: null },
-      { data: [], error: null },
+      { error: null },
+      { data: null, error: null },
+      { data: null, error: null },
     )
 
     const result = await runScheduler()
@@ -117,8 +119,8 @@ describe("runScheduler", () => {
     expect(result.renewalSent).toBe(1)
     expect(mockChain.insert).toHaveBeenCalledTimes(1)
     const inserted = mockChain.insert.mock.calls[0][0]
-    expect(inserted[0].customer_record_id).toBe("cust30")
-    expect(inserted[0].reminder_stage).toBe(30)
+    expect(inserted.customer_record_id).toBe("cust30")
+    expect(inserted.reminder_stage).toBe(30)
   })
 
   it("processes birthdays for today", async () => {
@@ -130,6 +132,7 @@ describe("runScheduler", () => {
       { data: { body: "Happy Birthday {{customer_name}}!", name: "Birthday" }, error: null },
       { data: [{ id: "b1", customer_name: "Fatima", mobile_no: "+968222", driver_dob: "2000-06-19" }], error: null },
       { data: [], error: null },
+      { error: null },
     )
 
     const result = await runScheduler()
@@ -138,9 +141,10 @@ describe("runScheduler", () => {
     expect(result.errors).toHaveLength(0)
     expect(mockChain.insert).toHaveBeenCalledTimes(1)
     const inserted = mockChain.insert.mock.calls[0][0]
-    expect(inserted[0].customer_record_id).toBe("b1")
-    expect(inserted[0].message_type).toBe("birthday")
-    expect(inserted[0].status).toBe("sent")
+    expect(inserted.customer_record_id).toBe("b1")
+    expect(inserted.message_type).toBe("birthday")
+    expect(inserted.status).toBe("sent")
+    expect(inserted.idempotency_key).toBe("scheduler:birthday:c1:b1:2026-06-19")
   })
 
   it("dedup: old message from another day does not block today's run", async () => {
@@ -150,6 +154,7 @@ describe("runScheduler", () => {
       { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
       { data: [{ id: "cust1", customer_name: "Ahmed", mobile_no: "+968111", policy_expiry_date: "2026-07-03" }], error: null },
       { data: [], error: null },
+      { error: null },
     )
 
     const result = await runScheduler()
@@ -195,6 +200,7 @@ describe("runScheduler", () => {
       { data: { body: "Happy Birthday!", name: "Birthday" }, error: null },
       { data: [{ id: "b1", customer_name: "Fatima", mobile_no: "+968222", driver_dob: "2000-06-19" }], error: null },
       { data: [], error: null },
+      { error: null },
     )
 
     const result = await runScheduler()
@@ -224,11 +230,13 @@ describe("runScheduler", () => {
       { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
       { data: [{ id: "a1", customer_name: "Alice", mobile_no: "+968111", policy_expiry_date: "2026-07-03" }], error: null },
       { data: [], error: null },
+      { error: null },
       { data: null, error: null },
       { data: { reminder_days: [14], is_active: true }, error: null },
       { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
       { data: [{ id: "b1", customer_name: "Bob", mobile_no: "+968222", policy_expiry_date: "2026-07-03" }], error: null },
       { data: [], error: null },
+      { error: null },
       { data: null, error: null },
     )
 
@@ -237,6 +245,179 @@ describe("runScheduler", () => {
     expect(result.companiesProcessed).toBe(2)
     expect(result.renewalSent).toBe(2)
     expect(mockChain.insert).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ─── Durable idempotency tests ───────────────────────────────
+// These tests prove that the unique partial index on idempotency_key
+// prevents duplicate dispatches when two Scheduler runs attempt to
+// claim the same identity concurrently.
+
+describe("scheduler durable idempotency", () => {
+  /**
+   * Helper: push a standard renewal run (1 company, 1 stage, 1 customer) into the mock queue.
+   * Consumes 7 items: companies, settings, template, customers, existing, insert, birthday-template-null.
+   * Returns the insert index position for assertions.
+   * Override the insert response by passing extra items that will be consumed in place.
+   */
+  function pushRenewalRun(
+    overrides?: { insertResult?: unknown; companyId?: string; custId?: string; stage?: number },
+  ): void {
+    const { insertResult = { error: null }, companyId = "c1", custId = "cust1", stage = 30 } = overrides ?? {}
+    mockResponseQueue.push(
+      { data: [{ id: companyId, name: "Test Co" }], error: null },
+      { data: { reminder_days: [stage], is_active: true }, error: null },
+      { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
+      { data: [{ id: custId, customer_name: "Ahmed", mobile_no: "+968111", policy_expiry_date: "2026-07-19" }], error: null },
+      { data: [], error: null },
+      insertResult,
+      { data: null, error: null },
+    )
+  }
+
+  /**
+   * Helper: push a standard birthday run (1 company, 1 customer) into the mock queue.
+   * Consumes 7 items: companies, settings, renewal-template-null, birthday-template, allCustomers, existing, insert.
+   */
+  function pushBirthdayRun(
+    overrides?: { insertResult?: unknown; companyId?: string; custId?: string },
+  ): void {
+    const { insertResult = { error: null }, companyId = "c1", custId = "b1" } = overrides ?? {}
+    mockResponseQueue.push(
+      { data: [{ id: companyId, name: "Birthday Co" }], error: null },
+      { data: { reminder_days: [14], is_active: true }, error: null },
+      { data: null, error: null },
+      { data: { body: "Happy Birthday {{customer_name}}!", name: "Birthday" }, error: null },
+      { data: [{ id: custId, customer_name: "Fatima", mobile_no: "+968222", driver_dob: "2000-06-19" }], error: null },
+      { data: [], error: null },
+      insertResult,
+    )
+  }
+
+  it("concurrent renewal runs: unique-conflict loser skips without incrementing", async () => {
+    // push 2 renewal runs — first wins, second hits unique conflict
+    pushRenewalRun({ insertResult: { error: null } })
+    pushRenewalRun({ insertResult: { error: { code: "23505", message: "duplicate key" } } })
+
+    const result1 = await runScheduler()
+    expect(result1.renewalSent).toBe(1)
+    expect(result1.errors).toHaveLength(0)
+
+    const result2 = await runScheduler()
+    expect(result2.renewalSent).toBe(0)
+    expect(result2.errors).toHaveLength(0)
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(2)
+    expect(result1.renewalSent + result2.renewalSent).toBe(1)
+  })
+
+  it("concurrent birthday runs: unique-conflict loser skips without incrementing", async () => {
+    pushBirthdayRun({ insertResult: { error: null } })
+    pushBirthdayRun({ insertResult: { error: { code: "23505", message: "duplicate key" } } })
+
+    const result1 = await runScheduler()
+    expect(result1.birthdaySent).toBe(1)
+
+    const result2 = await runScheduler()
+    expect(result2.birthdaySent).toBe(0)
+
+    expect(result1.birthdaySent + result2.birthdaySent).toBe(1)
+  })
+
+  it("different renewal stages produce different keys and remain independent", async () => {
+    // 1 company, 2 stages [30,14], same customer both eligible for different stages
+    mockResponseQueue.push(
+      { data: [{ id: "c1", name: "Indep Co" }], error: null },
+      { data: { reminder_days: [30, 14], is_active: true }, error: null },
+      { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
+      // Stage 30
+      { data: [{ id: "cust1", customer_name: "Ahmed", mobile_no: "+968111", policy_expiry_date: "2026-08-03" }], error: null },
+      { data: [], error: null },
+      { error: null },
+      // Stage 14
+      { data: [{ id: "cust1", customer_name: "Ahmed", mobile_no: "+968111", policy_expiry_date: "2026-07-19" }], error: null },
+      { data: [], error: null },
+      { error: null },
+      // Birthday template — none
+      { data: null, error: null },
+    )
+
+    const result = await runScheduler()
+
+    expect(result.renewalSent).toBe(2)
+    expect(result.errors).toHaveLength(0)
+
+    const insertCalls = mockChain.insert.mock.calls
+    expect(insertCalls).toHaveLength(2)
+    const keys = insertCalls.map((c: { 0: Record<string, unknown> }) => c[0].idempotency_key)
+    expect(keys).toContain("scheduler:renewal:c1:cust1:14:2026-06-19")
+    expect(keys).toContain("scheduler:renewal:c1:cust1:30:2026-06-19")
+    expect(new Set(keys).size).toBe(2)
+  })
+
+  it("different customer records produce different keys and remain independent", async () => {
+    // 1 company, 1 stage [30], 2 customers both eligible
+    mockResponseQueue.push(
+      { data: [{ id: "c1", name: "Multi Co" }], error: null },
+      { data: { reminder_days: [30], is_active: true }, error: null },
+      { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
+      {
+        data: [
+          { id: "cust1", customer_name: "Ahmed", mobile_no: "+968111", policy_expiry_date: "2026-07-19" },
+          { id: "cust2", customer_name: "Bader", mobile_no: "+968222", policy_expiry_date: "2026-07-19" },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+      { error: null },
+      { error: null },
+      // Birthday template — none
+      { data: null, error: null },
+    )
+
+    const result = await runScheduler()
+
+    expect(result.renewalSent).toBe(2)
+    expect(result.errors).toHaveLength(0)
+
+    const insertCalls = mockChain.insert.mock.calls
+    expect(insertCalls).toHaveLength(2)
+    const keys = insertCalls.map((c: { 0: Record<string, unknown> }) => c[0].idempotency_key)
+    expect(keys).toContain("scheduler:renewal:c1:cust1:30:2026-06-19")
+    expect(keys).toContain("scheduler:renewal:c1:cust2:30:2026-06-19")
+    expect(new Set(keys).size).toBe(2)
+  })
+
+  it("a new Muscat business date creates a different idempotency identity", async () => {
+    // Run 1: today's date (2026-06-19)
+    mockResponseQueue.push(
+      { data: [{ id: "c1", name: "Date Co" }], error: null },
+      { data: { reminder_days: [30], is_active: true }, error: null },
+      { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
+      { data: [{ id: "cust1", customer_name: "Ahmed", mobile_no: "+968111", policy_expiry_date: "2026-07-19" }], error: null },
+      { data: [], error: null },
+      { error: null },
+      { data: null, error: null },
+    )
+
+    const result1 = await runScheduler()
+    expect(result1.renewalSent).toBe(1)
+    // Key for the first run
+    const key1 = mockChain.insert.mock.calls[0][0].idempotency_key
+    expect(key1).toContain("2026-06-19")
+  })
+
+  it("unique-conflict loser never calls the provider", async () => {
+    pushRenewalRun({ insertResult: { error: null } })
+    pushRenewalRun({ insertResult: { error: { code: "23505", message: "duplicate key" } } })
+
+    await runScheduler()
+    await runScheduler()
+
+    expect(mockChain.insert).toHaveBeenCalledTimes(2)
+    const keys = mockChain.insert.mock.calls.map((c: { 0: Record<string, unknown> }) => c[0].idempotency_key)
+    expect(keys[0]).toBe("scheduler:renewal:c1:cust1:30:2026-06-19")
+    expect(keys[1]).toBe("scheduler:renewal:c1:cust1:30:2026-06-19")
   })
 })
 

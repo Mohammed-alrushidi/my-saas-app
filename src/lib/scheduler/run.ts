@@ -50,6 +50,51 @@ type CustomerRecord = {
 
 type CompanyRow = { id: string; name: string }
 
+// ─── Idempotency keys ────────────────────────────────────────
+
+function renewalIdempotencyKey(
+  companyId: string,
+  customerRecordId: string,
+  reminderStage: number,
+  businessDate: string,
+): string {
+  return `scheduler:renewal:${companyId}:${customerRecordId}:${reminderStage}:${businessDate}`
+}
+
+function birthdayIdempotencyKey(
+  companyId: string,
+  customerRecordId: string,
+  businessDate: string,
+): string {
+  return `scheduler:birthday:${companyId}:${customerRecordId}:${businessDate}`
+}
+
+/**
+ * Attempt an atomic INSERT with the given message row.
+ * Returns true if the insert succeeded (this Scheduler won the claim).
+ * Returns false on a unique-key conflict (another Scheduler already claimed it).
+ * Throws for other insert errors so the caller can report them.
+ */
+async function tryClaim(
+  supabase: ReturnType<typeof createAdminClient>,
+  row: Record<string, unknown>,
+): Promise<boolean> {
+  const { error } = await supabase.from("messages").insert(row)
+
+  if (!error) return true
+
+  // PostgreSQL unique violation code (PostgREST relays this as 23505)
+  const pgError = error as { code?: string } | null
+  if (pgError?.code === "23505") {
+    return false
+  }
+
+  // Re-throw real errors
+  throw error
+}
+
+// ─── Main Scheduler ──────────────────────────────────────────
+
 export async function runScheduler(): Promise<SchedulerResult> {
   const supabase = createAdminClient()
   const result: SchedulerResult = { companiesProcessed: 0, renewalSent: 0, birthdaySent: 0, errors: [] }
@@ -99,6 +144,8 @@ async function processCompany(
   await processBirthdays(supabase, company, date, startUtc, endUtcExclusive, result)
 }
 
+// ─── Renewals ────────────────────────────────────────────────
+
 async function processRenewals(
   supabase: ReturnType<typeof createAdminClient>,
   company: CompanyRow,
@@ -129,9 +176,10 @@ async function processRenewals(
 
     if (!customers || customers.length === 0) continue
 
+    // Dedup query: find messages already recorded within today's window for this stage
     const { data: existing } = await supabase
       .from("messages")
-      .select("customer_record_id")
+      .select("customer_record_id, idempotency_key")
       .eq("company_id", company.id)
       .eq("message_type", "renewal")
       .eq("reminder_stage", days)
@@ -144,28 +192,41 @@ async function processRenewals(
     if (eligible.length === 0) continue
 
     const now = new Date().toISOString()
-    const messages = eligible.map((c) => ({
-      company_id: company.id,
-      customer_record_id: c.id,
-      message_type: "renewal" as const,
-      recipient_mobile: c.mobile_no,
-      template_used: template.name,
-      message_body: renderTemplate(template.body, c, company.name, days),
-      status: "sent" as const,
-      reminder_stage: days,
-      provider_message_id: null,
-      failure_reason: null,
-      sent_at: now,
-    }))
 
-    const { error: insertErr } = await supabase.from("messages").insert(messages)
-    if (insertErr) {
-      result.errors.push(`Company ${company.id} renewal stage ${days}: ${insertErr.message}`)
-    } else {
-      result.renewalSent += messages.length
+    for (const customer of eligible) {
+      const key = renewalIdempotencyKey(company.id, customer.id, days, date)
+
+      const row = {
+        company_id: company.id,
+        customer_record_id: customer.id,
+        message_type: "renewal" as const,
+        recipient_mobile: customer.mobile_no,
+        template_used: template.name,
+        message_body: renderTemplate(template.body, customer, company.name, days),
+        status: "sent" as const,
+        reminder_stage: days,
+        provider_message_id: null,
+        failure_reason: null,
+        sent_at: now,
+        idempotency_key: key,
+      }
+
+      try {
+        const claimed = await tryClaim(supabase, row)
+        if (claimed) {
+          result.renewalSent++
+        }
+        // Not claimed → another Scheduler run already recorded this message; skip silently
+      } catch (err) {
+        result.errors.push(
+          `Company ${company.id} renewal stage ${days} customer ${customer.id}: ${err instanceof Error ? err.message : "Insert error"}`,
+        )
+      }
     }
   }
 }
+
+// ─── Birthdays ───────────────────────────────────────────────
 
 async function processBirthdays(
   supabase: ReturnType<typeof createAdminClient>,
@@ -205,9 +266,10 @@ async function processBirthdays(
 
   if (customers.length === 0) return
 
+  // Dedup query: find messages already recorded within today's window
   const { data: existing } = await supabase
     .from("messages")
-    .select("customer_record_id")
+    .select("customer_record_id, idempotency_key")
     .eq("company_id", company.id)
     .eq("message_type", "birthday")
     .gte("created_at", startUtc)
@@ -219,23 +281,34 @@ async function processBirthdays(
   if (eligible.length === 0) return
 
   const now = new Date().toISOString()
-  const messages = eligible.map((c) => ({
-    company_id: company.id,
-    customer_record_id: c.id,
-    message_type: "birthday" as const,
-    recipient_mobile: c.mobile_no,
-    template_used: template.name,
-    message_body: renderTemplate(template.body, c, company.name),
-    status: "sent" as const,
-    provider_message_id: null,
-    failure_reason: null,
-    sent_at: now,
-  }))
 
-  const { error: insertErr } = await supabase.from("messages").insert(messages)
-  if (insertErr) {
-    result.errors.push(`Company ${company.id} birthdays: ${insertErr.message}`)
-  } else {
-    result.birthdaySent += messages.length
+  for (const customer of eligible) {
+    const key = birthdayIdempotencyKey(company.id, customer.id, date)
+
+    const row = {
+      company_id: company.id,
+      customer_record_id: customer.id,
+      message_type: "birthday" as const,
+      recipient_mobile: customer.mobile_no,
+      template_used: template.name,
+      message_body: renderTemplate(template.body, customer, company.name),
+      status: "sent" as const,
+      reminder_stage: null,
+      provider_message_id: null,
+      failure_reason: null,
+      sent_at: now,
+      idempotency_key: key,
+    }
+
+    try {
+      const claimed = await tryClaim(supabase, row)
+      if (claimed) {
+        result.birthdaySent++
+      }
+    } catch (err) {
+      result.errors.push(
+        `Company ${company.id} birthday customer ${customer.id}: ${err instanceof Error ? err.message : "Insert error"}`,
+      )
+    }
   }
 }
