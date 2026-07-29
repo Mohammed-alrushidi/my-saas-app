@@ -72,8 +72,10 @@ function birthdayIdempotencyKey(
 /**
  * Attempt an atomic INSERT with the given message row.
  * Returns true if the insert succeeded (this Scheduler won the claim).
- * Returns false on a unique-key conflict (another Scheduler already claimed it).
- * Throws for other insert errors so the caller can report them.
+ * Returns false on an idempotency-key unique conflict (another run already claimed it).
+ * Throws for all other errors — including unrelated unique violations — so the
+ * caller can report them.  Only the constrained index name is treated as a
+ * benign idempotency duplicate.
  */
 async function tryClaim(
   supabase: ReturnType<typeof createAdminClient>,
@@ -83,13 +85,15 @@ async function tryClaim(
 
   if (!error) return true
 
-  // PostgreSQL unique violation code (PostgREST relays this as 23505)
-  const pgError = error as { code?: string } | null
-  if (pgError?.code === "23505") {
+  // Only treat 23505 as a benign idempotency duplicate when it originates
+  // from the idempotency_key unique partial index.  Any other unique
+  // violation is unexpected and must be surfaced.
+  const pgError = error as { code?: string; message?: string } | null
+  if (pgError?.code === "23505" && pgError.message?.includes("idx_messages_idempotency_key")) {
     return false
   }
 
-  // Re-throw real errors
+  // Re-throw real errors (including unrelated unique violations)
   throw error
 }
 

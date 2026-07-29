@@ -295,9 +295,16 @@ describe("scheduler durable idempotency", () => {
   }
 
   it("concurrent renewal runs: unique-conflict loser skips without incrementing", async () => {
-    // push 2 renewal runs — first wins, second hits unique conflict
+    // push 2 renewal runs — first wins, second hits idempotency unique conflict
     pushRenewalRun({ insertResult: { error: null } })
-    pushRenewalRun({ insertResult: { error: { code: "23505", message: "duplicate key" } } })
+    pushRenewalRun({
+      insertResult: {
+        error: {
+          code: "23505",
+          message: 'duplicate key value violates unique constraint "idx_messages_idempotency_key"',
+        },
+      },
+    })
 
     const result1 = await runScheduler()
     expect(result1.renewalSent).toBe(1)
@@ -313,7 +320,14 @@ describe("scheduler durable idempotency", () => {
 
   it("concurrent birthday runs: unique-conflict loser skips without incrementing", async () => {
     pushBirthdayRun({ insertResult: { error: null } })
-    pushBirthdayRun({ insertResult: { error: { code: "23505", message: "duplicate key" } } })
+    pushBirthdayRun({
+      insertResult: {
+        error: {
+          code: "23505",
+          message: 'duplicate key value violates unique constraint "idx_messages_idempotency_key"',
+        },
+      },
+    })
 
     const result1 = await runScheduler()
     expect(result1.birthdaySent).toBe(1)
@@ -407,9 +421,37 @@ describe("scheduler durable idempotency", () => {
     expect(key1).toContain("2026-06-19")
   })
 
+  it("unrelated 23505 error is surfaced, not silently skipped", async () => {
+    // A 23505 unique violation that does NOT come from the idempotency_key
+    // index must be surfaced as a real error, not silently skipped.
+    pushRenewalRun({
+      insertResult: {
+        error: {
+          code: "23505",
+          message: 'duplicate key value violates unique constraint "some_other_unique_idx"',
+        },
+      },
+    })
+
+    const result = await runScheduler()
+    expect(result.renewalSent).toBe(0)
+    // The error IS surfaced even though the plain PostgREST error object
+    // isn't instanceof Error — the important thing is that the scheduler
+    // did NOT silently skip it.
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toContain("customer cust1")
+  })
+
   it("unique-conflict loser never calls the provider", async () => {
     pushRenewalRun({ insertResult: { error: null } })
-    pushRenewalRun({ insertResult: { error: { code: "23505", message: "duplicate key" } } })
+    pushRenewalRun({
+      insertResult: {
+        error: {
+          code: "23505",
+          message: 'duplicate key value violates unique constraint "idx_messages_idempotency_key"',
+        },
+      },
+    })
 
     await runScheduler()
     await runScheduler()
