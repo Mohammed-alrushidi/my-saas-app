@@ -868,6 +868,149 @@ describe("confirmBroadcastSelected", () => {
     expect(mockSendMessages).toHaveBeenCalledTimes(1)
   })
 
+  // ── Cross-company isolation tests ──
+
+  it("scopes claim insert by authenticated company_id", async () => {
+    const customers = [
+      { id: "c1", customer_name: "Alice", mobile_no: "+9****11", policy_no: "P1", communication_status: "allowed" },
+    ]
+    mockResolveValue = { data: customers, error: null }
+
+    await confirmBroadcastSelected("Hello", ["c1"], TEST_SUB_ID)
+
+    // Find the broadcast_submissions claim insert (table insert, not messages array insert)
+    const insertCalls = mockChain.insert.mock.calls
+    const claimCalls = insertCalls.filter((args: any[]) => args[0]?.company_id !== undefined)
+    expect(claimCalls).toHaveLength(1)
+    // company_id must equal the authenticated profile's company_id
+    expect(claimCalls[0][0].company_id).toBe("test-company-id")
+    // The server must never accept a client-supplied company_id
+    expect(claimCalls[0][0].company_id).not.toBe("other-company-id")
+  })
+
+  it("scopes duplicate lookup by authenticated company_id", async () => {
+    const customers = [
+      { id: "c1", customer_name: "Alice", mobile_no: "+9****11", policy_no: "P1", communication_status: "allowed" },
+    ]
+    const submissionId = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+
+    mockResolveValue = { data: customers, error: null }
+    mockInsertError = {
+      code: "23505",
+      message: 'duplicate key value violates unique constraint "idx_broadcast_submissions_company_key"',
+    }
+    mockSingleReturn = {
+      data: {
+        id: "sub-1",
+        company_id: "test-company-id",
+        submission_key: submissionId,
+        payload_hash: await computePayloadHash("Hello", ["c1"]),
+        status: "completed",
+        recipient_count: 1,
+        sent_count: 1,
+        failed_count: 0,
+        skipped_count: 0,
+      },
+      error: null,
+    }
+
+    const result = await confirmBroadcastSelected("Hello", ["c1"], submissionId)
+    expect(result.alreadySubmitted).toBe(true)
+
+    // The duplicate lookup must be scoped by the authenticated company_id
+    const eqCalls = mockChain.eq.mock.calls
+    const companyEqCalls = eqCalls.filter((args: any[]) => args[0] === "company_id")
+    // At least one .eq("company_id", ...) call came from the duplicate lookup
+    expect(companyEqCalls.length).toBeGreaterThanOrEqual(1)
+    // All company_id scoping uses the authenticated profile's company_id
+    for (const call of companyEqCalls) {
+      expect(call[1]).toBe("test-company-id")
+    }
+  })
+
+  it("allows same submission_key under different companies", async () => {
+    const customers = [
+      { id: "c1", customer_name: "Alice", mobile_no: "+9****11", policy_no: "P1", communication_status: "allowed" },
+    ]
+    const sharedKey = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+    // Company A claims key
+    mockGetProfile.mockReturnValueOnce({
+      id: "user-a", company_id: "company-a", role: "company_admin", is_active: true,
+      companies: { name: "Company A" },
+    })
+    mockResolveValue = { data: customers, error: null }
+    const resultA = await confirmBroadcastSelected("Hello", ["c1"], sharedKey)
+    expect(resultA.success).toBe(true)
+
+    // Reset insert mock so we can verify Company B's claim is a separate insert call
+    mockChain.insert.mockClear()
+    mockSendMessages.mockClear()
+
+    // Company B claims the same key — must succeed because unique key is (company_id, submission_key)
+    mockGetProfile.mockReturnValueOnce({
+      id: "user-b", company_id: "company-b", role: "company_admin", is_active: true,
+      companies: { name: "Company B" },
+    })
+    mockResolveValue = { data: customers, error: null }
+    const resultB = await confirmBroadcastSelected("Hello", ["c1"], sharedKey)
+    expect(resultB.success).toBe(true)
+
+    // Both companies sent independently
+    expect(mockSendMessages).toHaveBeenCalledTimes(1)
+
+    // Verify Company B's claim was a fresh insert (not a duplicate lookup)
+    const insertCalls = mockChain.insert.mock.calls
+    const claimCalls = insertCalls.filter((args: any[]) => args[0]?.company_id !== undefined)
+    expect(claimCalls).toHaveLength(1)
+    expect(claimCalls[0][0].company_id).toBe("company-b")
+  })
+
+  it("scopes all update paths by authenticated company_id", async () => {
+    const customers = [
+      { id: "c1", customer_name: "Alice", mobile_no: "+9****11", policy_no: "P1", communication_status: "allowed" },
+    ]
+    mockResolveValue = { data: customers, error: null }
+
+    await confirmBroadcastSelected("Hello", ["c1"], TEST_SUB_ID)
+
+    // Verify the completion update was scoped by company_id
+    const updateEqCalls = mockUpdateChain.eq.mock.calls
+    const companyEqCalls = updateEqCalls.filter((args: any[]) => args[0] === "company_id")
+    expect(companyEqCalls.length).toBeGreaterThanOrEqual(1)
+    for (const call of companyEqCalls) {
+      expect(call[1]).toBe("test-company-id")
+    }
+  })
+
+  it("rejects non-company_admin role before any company-scoped operation", async () => {
+    mockGetProfile.mockReturnValueOnce({
+      id: "test-staff", company_id: "test-company-id", role: "staff", is_active: true,
+      companies: { name: "Test Company" },
+    })
+
+    const result = await confirmBroadcastSelected("Hello", ["c1"], TEST_SUB_ID)
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("Only admins")
+
+    // No DB insert should have occurred
+    expect(mockChain.insert).not.toHaveBeenCalled()
+  })
+
+  it("rejects unauthenticated user before any company-scoped operation", async () => {
+    mockGetProfile.mockReturnValueOnce({
+      id: "test-user", company_id: null, role: "staff", is_active: true,
+      companies: null,
+    })
+
+    const result = await confirmBroadcastSelected("Hello", ["c1"], TEST_SUB_ID)
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("No company assigned")
+
+    // No DB insert should have occurred
+    expect(mockChain.insert).not.toHaveBeenCalled()
+  })
+
   it("rejects invalid submissionId format", async () => {
     const result = await confirmBroadcastSelected("Hello", ["c1"], "not-a-uuid")
     expect(result.success).toBe(false)
