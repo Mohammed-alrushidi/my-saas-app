@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { loadBroadcastTemplate, getBroadcastRecipientsPaginated, confirmBroadcastSelected } from "./actions"
@@ -12,6 +12,36 @@ import { Search, Inbox } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const MAX_RECIPIENTS = 50
+const SUBMISSION_STORAGE_PREFIX = "broadcast_sub_"
+
+/** Retrieve an existing submission ID for the given payload fingerprint, or create a fresh one. */
+function getOrCreateSubmissionId(fingerprint: string): string {
+  const key = `${SUBMISSION_STORAGE_PREFIX}${fingerprint}`
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed.id && typeof parsed.id === "string" && parsed.created > Date.now() - 86400000) {
+        return parsed.id
+      }
+    }
+  } catch {
+    // Corrupt entry — generate new below
+  }
+  const id = crypto.randomUUID()
+  sessionStorage.setItem(key, JSON.stringify({ id, created: Date.now(), fingerprint }))
+  return id
+}
+
+/** Remove the stored submission ID for a given payload fingerprint. */
+function clearSubmissionId(fingerprint: string): void {
+  const key = `${SUBMISSION_STORAGE_PREFIX}${fingerprint}`
+  try {
+    sessionStorage.removeItem(key)
+  } catch {
+    // Best-effort
+  }
+}
 
 export default function BroadcastPage() {
   const router = useRouter()
@@ -34,6 +64,16 @@ export default function BroadcastPage() {
   const [canPrepare, setCanPrepare] = useState(false)
   const [canSend, setCanSend] = useState(false)
   const [role, setRole] = useState<string | null>(null)
+
+  // Submission idempotency state
+  const [submissionId, setSubmissionId] = useState<string | null>(null)
+  const submitLockRef = useRef(false)
+
+  // Payload fingerprint — changes when body or selected recipients change
+  const payloadFingerprint = useMemo(() => {
+    const sorted = [...selectedIds].sort().join(",")
+    return `${body.trim()}|${sorted}`
+  }, [body, selectedIds])
 
   useEffect(() => {
     getDashboardCapabilities().then((caps) => {
@@ -144,24 +184,46 @@ export default function BroadcastPage() {
     }
   }
 
-  async function handleConfirm() {
+  /** Open the confirmation dialog and create/reuse a submission ID. */
+  function handleOpenConfirm() {
     if (!canSend) return
     if (selectedCount === 0 || overLimit) return
+    const id = getOrCreateSubmissionId(payloadFingerprint)
+    setSubmissionId(id)
+    setShowConfirm(true)
+  }
+
+  async function handleConfirm() {
+    if (!canSend || !submissionId) return
+    // Synchronous lock — prevents two click events in the same render cycle
+    if (submitLockRef.current) return
+    submitLockRef.current = true
     setSending(true)
     setError(null)
     setShowConfirm(false)
     try {
-      const res = await confirmBroadcastSelected(body, Array.from(selectedIds))
+      const res = await confirmBroadcastSelected(body, Array.from(selectedIds), submissionId)
       setResult(res)
+      // Clean up session storage only on completed results
+      if (res.success || (res.alreadySubmitted && res.submissionStatus === "completed")) {
+        clearSubmissionId(payloadFingerprint)
+        setSubmissionId(null)
+      }
+      // For processing, uncertain, and failed duplicates: retain the submission ID
+      // so that repeat requests with the same ID safely re-check server state
+      // rather than creating a fresh identity that could trigger a new send.
     } catch (e) {
       setError(e instanceof Error ? e.message : "An unexpected error occurred")
     } finally {
       setSending(false)
+      submitLockRef.current = false
     }
   }
 
   const readyToSend = body.trim() && selectedCount > 0 && !overLimit && !sending
 
+  // Submission ID is managed via sessionStorage keyed by payload fingerprint.
+  // When the payload changes, getOrCreateSubmissionId generates a new ID on next dialog open.
   if (!pageReady) {
     return <div className="p-6 text-sm text-gray-500">Loading...</div>
   }
@@ -186,7 +248,7 @@ export default function BroadcastPage() {
         </Notice>
       ) : result ? (
         <div className="max-w-2xl">
-          {result.success ? (
+          {result.success && !result.alreadySubmitted ? (
             <div className="rounded-lg border border-green-200 bg-green-50 p-6">
               <div className="mb-2 text-lg font-semibold text-green-800">Broadcast complete</div>
               <div className="space-y-1 text-sm text-green-700">
@@ -203,10 +265,97 @@ export default function BroadcastPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setBody(""); setResult(null); setError(null); setTemplateBody(null)
+                    setBody(""); setResult(null); setError(null); setTemplateBody(null); setSubmissionId(null)
                   }}
                 >
                   Send another
+                </Button>
+              </div>
+            </div>
+          ) : result.payloadMismatch ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-6">
+              <div className="mb-2 text-lg font-semibold text-red-800">Broadcast rejected</div>
+              <p className="text-sm text-red-700">
+                The broadcast details changed after the submission was created. Please review and try again.
+              </p>
+              <div className="mt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setError(null); setResult(null); setSubmissionId(null)
+                  }}
+                >
+                  Try again
+                </Button>
+              </div>
+            </div>
+          ) : result.alreadySubmitted && result.submissionStatus === "completed" ? (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-6">
+              <div className="mb-2 text-lg font-semibold text-blue-800">Broadcast already sent</div>
+              <p className="text-sm text-blue-700">
+                This broadcast was already completed ({result.sent} sent, {result.skipped} skipped).
+              </p>
+              <div className="mt-4 flex gap-3">
+                <Button onClick={() => router.push("/dashboard/messages")}>
+                  View history
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setBody(""); setResult(null); setError(null); setTemplateBody(null); setSubmissionId(null)
+                  }}
+                >
+                  Send another
+                </Button>
+              </div>
+            </div>
+          ) : result.alreadySubmitted && result.submissionStatus === "processing" ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
+              <div className="mb-2 text-lg font-semibold text-amber-800">Broadcast is being processed</div>
+              <p className="text-sm text-amber-700">
+                This broadcast is currently being sent. No action needed — the result will be available shortly.
+              </p>
+              <div className="mt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setResult(null)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ) : result.alreadySubmitted && result.submissionStatus === "uncertain" ? (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 p-6">
+              <div className="mb-2 text-lg font-semibold text-orange-800">Broadcast outcome uncertain</div>
+              <p className="text-sm text-orange-700">
+                This broadcast has an uncertain result — some messages may have been sent. Please check message history to verify.
+              </p>
+              <div className="mt-4 flex gap-3">
+                <Button onClick={() => router.push("/dashboard/messages")}>
+                  View history
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setResult(null)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ) : result.alreadySubmitted && result.submissionStatus === "failed" ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-6">
+              <div className="mb-2 text-lg font-semibold text-red-800">Broadcast previously failed</div>
+              <p className="text-sm text-red-700">
+                This broadcast previously failed. To try again, start a new broadcast with a fresh submission.
+              </p>
+              <div className="mt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setError(null); setResult(null); setSubmissionId(null)
+                  }}
+                >
+                  Start a new Broadcast
                 </Button>
               </div>
             </div>
@@ -214,6 +363,16 @@ export default function BroadcastPage() {
             <div className="rounded-lg border border-red-200 bg-red-50 p-6">
               <div className="mb-2 text-lg font-semibold text-red-800">Broadcast failed</div>
               <p className="text-sm text-red-700">{result.error ?? "Unknown error"}</p>
+              <div className="mt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setError(null); setResult(null)
+                  }}
+                >
+                  Try again
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -404,7 +563,7 @@ export default function BroadcastPage() {
                 ))}
                 {canSend ? (
                   <Button
-                    onClick={() => setShowConfirm(true)}
+                    onClick={handleOpenConfirm}
                     disabled={overLimit || !readyToSend}
                     className="mt-3 w-full"
                   >
@@ -464,7 +623,7 @@ export default function BroadcastPage() {
               <Button
                 type="button"
                 onClick={handleConfirm}
-                disabled={sending}
+                disabled={sending || !submissionId}
               >
                 {sending ? "Sending..." : "Confirm"}
               </Button>
