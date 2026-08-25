@@ -1018,6 +1018,171 @@ describe("confirmBroadcastSelected", () => {
     expect(mockSendMessages).not.toHaveBeenCalled()
   })
 
+  // ── Checked submission state-transitions (Batch A) ──
+
+  it("reports success with a warning when the finalize update fails after messages were sent", async () => {
+    const customers = [
+      { id: "c1", customer_name: "Alice", mobile_no: "+9****11", policy_no: "P1", communication_status: "allowed" },
+      { id: "c2", customer_name: "Bob", mobile_no: "+9****22", policy_no: "P2", communication_status: "allowed" },
+    ]
+    mockResolveValue = { data: customers, error: null }
+    // Claim insert and history insert succeed; every submission UPDATE fails.
+    mockUpdateError = { code: "PGRST301", message: "connection reset" }
+
+    const result = await confirmBroadcastSelected(
+      "Hello",
+      ["c1", "c2"],
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa201",
+    )
+
+    // The broadcast itself succeeded — must not be reported as a failure.
+    expect(result.success).toBe(true)
+    expect(result.sent).toBe(2)
+    expect(result.error).toBeDefined()
+    expect(result.error).toContain("Messages were sent")
+    expect(result.error).toContain("recording the final broadcast status failed")
+
+    // The attempted transition was still the completed transition.
+    expect(mockChain.update).toHaveBeenCalled()
+    const finalizePatch = mockChain.update.mock.calls[0][0]
+    expect(finalizePatch.status).toBe("completed")
+    expect(finalizePatch.sent_count).toBe(2)
+    expect(finalizePatch.failed_count).toBe(0)
+  })
+
+  it("reports both facts when history insert fails AND the uncertain-mark also fails", async () => {
+    const customers = [
+      { id: "c1", customer_name: "Alice", mobile_no: "+9****11", policy_no: "P1", communication_status: "allowed" },
+    ]
+    mockResolveValue = { data: customers, error: null }
+
+    // First insert (claim) succeeds, second insert (messages) fails…
+    let insertCallCount = 0
+    mockChain.insert.mockImplementation(() => {
+      insertCallCount++
+      if (insertCallCount >= 2) {
+        return Promise.resolve({ error: { code: "PGRST116", message: "insert error" } })
+      }
+      return Promise.resolve({ error: null })
+    })
+    // …and every submission UPDATE fails too, so the row stays "processing".
+    mockUpdateError = { code: "PGRST301", message: "connection reset" }
+
+    const result = await confirmBroadcastSelected(
+      "Hello",
+      ["c1"],
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa202",
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("Failed to save message history")
+    expect(result.error).toContain("may have been sent")
+    expect(result.error).toContain("tracking state could not be updated")
+
+    // The uncertain transition was attempted despite failing.
+    const markPatch = mockChain.update.mock.calls[0][0]
+    expect(markPatch.status).toBe("uncertain")
+    expect(markPatch.last_error_code).toBe("history_insert_failed")
+  })
+
+  it("appends a tracking note when the unexpected-error uncertain-mark fails", async () => {
+    const customers = [
+      { id: "c1", customer_name: "Alice", mobile_no: "+9****11", policy_no: "P1", communication_status: "allowed" },
+    ]
+    mockResolveValue = { data: customers, error: null }
+    mockSendMessages.mockRejectedValueOnce(new Error("Provider connection lost"))
+    mockUpdateError = { code: "PGRST301", message: "connection reset" }
+
+    const result = await confirmBroadcastSelected(
+      "Hello",
+      ["c1"],
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa203",
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain("Provider connection lost")
+    expect(result.error).toContain("tracking state could not be updated")
+
+    const markPatch = mockChain.update.mock.calls[0][0]
+    expect(markPatch.status).toBe("uncertain")
+    expect(markPatch.last_error_code).toBe("unexpected_error")
+  })
+
+  // ── Stale-processing detection ──
+
+  const STALE_THRESHOLD_MS = 15 * 60 * 1000
+
+  function processingDuplicate(startedAt?: string) {
+    return {
+      id: "sub-stale",
+      company_id: "test-company-id",
+      submission_key: "",
+      payload_hash: "",
+      status: "processing",
+      recipient_count: 1,
+      sent_count: 0,
+      failed_count: 0,
+      skipped_count: 0,
+      ...(startedAt !== undefined ? { started_at: startedAt } : {}),
+    }
+  }
+
+  async function expectProcessingDuplicate(startedAt?: string) {
+    const submissionId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaa204"
+    const customers = [
+      { id: "c1", customer_name: "Alice", mobile_no: "+9****11", policy_no: "P1", communication_status: "allowed" },
+    ]
+    mockResolveValue = { data: customers, error: null }
+    mockInsertError = {
+      code: "23505",
+      message: 'duplicate key value violates unique constraint "idx_broadcast_submissions_company_key"',
+    }
+    mockSingleReturn = {
+      data: {
+        ...processingDuplicate(startedAt),
+        submission_key: submissionId,
+        payload_hash: await computePayloadHash("Hello", ["c1"]),
+      },
+      error: null,
+    }
+    return confirmBroadcastSelected("Hello", ["c1"], submissionId)
+  }
+
+  it("treats a processing duplicate just inside the staleness window as live", async () => {
+    const freshStartedAt = new Date(Date.now() - (STALE_THRESHOLD_MS - 30 * 1000)).toISOString()
+
+    const result = await expectProcessingDuplicate(freshStartedAt)
+
+    expect(result.alreadySubmitted).toBe(true)
+    expect(result.submissionStatus).toBe("processing")
+    expect(result.staleProcessing).toBeFalsy()
+    expect(result.error).toContain("already being processed")
+    expect(mockSendMessages).not.toHaveBeenCalled()
+  })
+
+  it("flags a processing duplicate just past the staleness window as stuck", async () => {
+    const staleStartedAt = new Date(Date.now() - (STALE_THRESHOLD_MS + 30 * 1000)).toISOString()
+
+    const result = await expectProcessingDuplicate(staleStartedAt)
+
+    expect(result.alreadySubmitted).toBe(true)
+    expect(result.submissionStatus).toBe("processing")
+    expect(result.staleProcessing).toBe(true)
+    expect(result.error).toContain("stuck")
+    expect(result.error).toContain("outcome is unknown")
+    // Recovery is report-only: never an automatic re-send.
+    expect(mockSendMessages).not.toHaveBeenCalled()
+  })
+
+  it("does not flag a processing duplicate with a malformed started_at as stale", async () => {
+    const result = await expectProcessingDuplicate(undefined)
+
+    expect(result.alreadySubmitted).toBe(true)
+    expect(result.staleProcessing).toBeFalsy()
+    expect(result.error).toContain("already being processed")
+    expect(mockSendMessages).not.toHaveBeenCalled()
+  })
+
   it("rejects submissionId exceeding max length", async () => {
     const longId = "a".repeat(65)
     const result = await confirmBroadcastSelected("Hello", ["c1"], longId)

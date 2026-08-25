@@ -29,6 +29,52 @@ export type ConfirmResult = {
   alreadySubmitted?: boolean
   /** True when the submission key was found but the payload hash did not match. */
   payloadMismatch?: boolean
+  /**
+   * True when the existing submission has been "processing" longer than
+   * STALE_PROCESSING_MS — it almost certainly never finished, so the UI
+   * should offer recovery instead of asking the user to wait.
+   */
+  staleProcessing?: boolean
+}
+
+/**
+ * A submission stuck in "processing" for at least this long is treated as
+ * abandoned (crash/timeout between claim and finalize). Serverless function
+ * durations are far below this threshold, so a live run is effectively
+ * impossible past it. Report-only: recovery is offered to the user, we never
+ * re-send automatically based on this flag.
+ */
+const STALE_PROCESSING_MS = 15 * 60 * 1000
+
+function isStaleProcessing(startedAt: unknown): boolean {
+  if (typeof startedAt !== "string") return false
+  const startedMs = Date.parse(startedAt)
+  if (!Number.isFinite(startedMs)) return false
+  return Date.now() - startedMs >= STALE_PROCESSING_MS
+}
+
+/**
+ * Update a broadcast submission row, always scoped to the authenticated
+ * company and submission key. Never throws — callers must check `.error`
+ * so a failed state-transition can be surfaced instead of silently lost.
+ */
+async function updateSubmission(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  companyId: string,
+  submissionId: string,
+  patch: Record<string, unknown>,
+): Promise<{ error: string | null }> {
+  try {
+    const { error } = await supabase
+      .from("broadcast_submissions")
+      .update(patch)
+      .eq("company_id", companyId)
+      .eq("submission_key", submissionId)
+
+    return { error: error?.message ?? null }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unknown submission update error" }
+  }
 }
 
 export type PaginatedRecipients = {
@@ -209,8 +255,12 @@ export async function confirmBroadcastSelected(
         }
 
         // Safe duplicate — return existing submission state
+        const isProcessing = existing.status === "processing"
+        const stale = isProcessing && isStaleProcessing(existing.started_at)
+
         const existingError =
-          existing.status === "processing" ? "Broadcast is already being processed" :
+          isProcessing && stale ? "This broadcast appears stuck — its outcome is unknown. Please check message history and start a new broadcast." :
+          isProcessing ? "Broadcast is already being processed" :
           existing.status === "uncertain" ? "Broadcast outcome is uncertain — check message history" :
           existing.status === "completed" ? undefined :
           "Broadcast previously failed — create a new broadcast"
@@ -222,6 +272,7 @@ export async function confirmBroadcastSelected(
           error: existingError,
           alreadySubmitted: true,
           submissionStatus: existing.status,
+          ...(stale ? { staleProcessing: true } : {}),
         }
       }
 
@@ -253,56 +304,64 @@ export async function confirmBroadcastSelected(
     const { error: insertError } = await supabase.from("messages").insert(messages)
 
     if (insertError) {
-      // History persistence failed — mark submission uncertain
-      await supabase
-        .from("broadcast_submissions")
-        .update({
-          status: "uncertain",
-          last_error_code: "history_insert_failed",
-        })
-        .eq("company_id", profile.company_id)
-        .eq("submission_key", submissionId)
+      // History persistence failed — mark submission uncertain so the state is
+      // recoverable rather than stranded in "processing".
+      const mark = await updateSubmission(supabase, profile.company_id, submissionId, {
+        status: "uncertain",
+        last_error_code: "history_insert_failed",
+      })
 
-      return { success: false, sent: 0, skipped: 0, error: "Failed to save message history — broadcast may have been sent", mock: isMock }
+      const trackingNote = mark.error
+        ? " Its tracking state could not be updated; it will be flagged as stuck automatically."
+        : ""
+
+      return { success: false, sent: 0, skipped: 0, error: `Failed to save message history — broadcast may have been sent.${trackingNote}`, mock: isMock }
     }
 
     // 7. Calculate truthful counts
     const sentCount = messages.filter((m) => m.status === "sent").length
     const failedCount = messages.filter((m) => m.status === "failed").length
 
-    // 8. Finalize submission as completed
-    await supabase
-      .from("broadcast_submissions")
-      .update({
-        status: "completed",
-        sent_count: sentCount,
-        failed_count: failedCount,
-        completed_at: now,
-      })
-      .eq("company_id", profile.company_id)
-      .eq("submission_key", submissionId)
+    // 8. Finalize submission as completed. The messages themselves are already
+    // sent and the history rows persisted, so this failure must not turn a
+    // successful broadcast into a reported failure — surface it as a warning
+    // instead. Stale-processing detection recovers the orphaned row.
+    const finalize = await updateSubmission(supabase, profile.company_id, submissionId, {
+      status: "completed",
+      sent_count: sentCount,
+      failed_count: failedCount,
+      completed_at: now,
+    })
+
+    if (finalize.error) {
+      console.error("Failed to finalize broadcast submission:", finalize.error)
+      return {
+        success: true,
+        sent: sentCount,
+        skipped: 0,
+        mock: isMock,
+        error: "Messages were sent and message history is accurate, but recording the final broadcast status failed.",
+      }
+    }
 
     return { success: true, sent: sentCount, skipped: 0, mock: isMock }
 
   } catch (e) {
     // If the claim was made but an unexpected error occurred, mark submission uncertain
     // so the state is recoverable rather than silently lost.
+    let stateNote = ""
     if (claimSucceeded && companyId && profileId) {
-      try {
-        await supabase
-          .from("broadcast_submissions")
-          .update({
-            status: "uncertain",
-            last_error_code: "unexpected_error",
-          })
-          .eq("company_id", companyId)
-          .eq("submission_key", submissionId)
-      } catch {
-        // Best-effort — do not mask the original error
+      const mark = await updateSubmission(supabase, companyId, submissionId, {
+        status: "uncertain",
+        last_error_code: "unexpected_error",
+      })
+      if (mark.error) {
+        stateNote = " (Its tracking state could not be updated.)"
       }
     }
 
     console.error("confirmBroadcastSelected error:", e)
-    return { success: false, sent: 0, skipped: 0, error: e instanceof Error ? e.message : "Unexpected error" }
+    const message = e instanceof Error ? e.message : "Unexpected error"
+    return { success: false, sent: 0, skipped: 0, error: `${message}${stateNote}` }
   }
 }

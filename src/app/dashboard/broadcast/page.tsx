@@ -212,6 +212,8 @@ export default function BroadcastPage() {
       // For processing, uncertain, and failed duplicates: retain the submission ID
       // so that repeat requests with the same ID safely re-check server state
       // rather than creating a fresh identity that could trigger a new send.
+      // Stale "processing" results are recovered in the UI, which clears the
+      // stored ID so the next attempt gets a fresh submission identity.
     } catch (e) {
       setError(e instanceof Error ? e.message : "An unexpected error occurred")
     } finally {
@@ -306,6 +308,29 @@ export default function BroadcastPage() {
                   }}
                 >
                   Send another
+                </Button>
+              </div>
+            </div>
+          ) : result.alreadySubmitted && result.submissionStatus === "processing" && result.staleProcessing ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-6">
+              <div className="mb-2 text-lg font-semibold text-red-800">Broadcast appears stuck</div>
+              <p className="text-sm text-red-700">
+                This broadcast did not finish and its outcome is unknown — no further send attempts were made.
+                Please review message history to see what was delivered, then start a new broadcast if needed.
+              </p>
+              <div className="mt-4 flex gap-3">
+                <Button onClick={() => router.push("/dashboard/messages")}>
+                  View history
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setError(null); setResult(null)
+                    clearSubmissionId(payloadFingerprint)
+                    setSubmissionId(null)
+                  }}
+                >
+                  Start a new Broadcast
                 </Button>
               </div>
             </div>
