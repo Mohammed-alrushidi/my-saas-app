@@ -323,6 +323,17 @@ describe("Manual Renewal dedup (Muscat business day)", () => {
 })
 
 describe("getMessageHistory", () => {
+  it("returns a generic error and empty list when the query fails", async () => {
+    mockResponseQueue.push({ data: null, error: { message: "database connection lost" } })
+
+    const result = await getMessageHistory()
+
+    expect(result.messages).toEqual([])
+    expect(result.hasMore).toBe(false)
+    expect(result.error).toBe("Failed to load message history")
+    expect(result.error).not.toContain("database connection lost")
+  })
+
   it("returns 50 messages and hasMore true when supabase returns 51 rows", async () => {
     const mockRows = Array.from({ length: 51 }, (_, i) => ({
       id: `msg-${i + 1}`,

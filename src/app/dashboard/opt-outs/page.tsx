@@ -5,6 +5,7 @@ import { listOptOuts, addOptOut, removeOptOut } from "./actions"
 import { getCurrentRole } from "../role-actions"
 import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Search, PhoneOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { OptOutData } from "./actions"
@@ -16,13 +17,20 @@ export default function OptOutsPage() {
   const [newMobile, setNewMobile] = useState("")
   const [showAddForm, setShowAddForm] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [removeTarget, setRemoveTarget] = useState<OptOutData | null>(null)
+  const [removing, setRemoving] = useState(false)
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const fetchOptOuts = useCallback(async (q?: string) => {
     setLoading(true)
-    const data = await listOptOuts(q || undefined)
-    setOptOuts(data)
-    setLoading(false)
+    try {
+      const data = await listOptOuts(q || undefined)
+      setOptOuts(data)
+    } catch {
+      setNotification({ type: "error", message: "Failed to load opt-outs. Please try again." })
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -47,14 +55,26 @@ export default function OptOutsPage() {
     }
   }
 
-  async function handleRemove(id: string, mobile: string) {
-    if (!confirm(`Remove opt-out for ${mobile}?`)) return
-    const result = await removeOptOut(id)
-    if (result.success) {
-      setNotification({ type: "success", message: "Opt-out removed" })
-      fetchOptOuts(search)
-    } else {
-      setNotification({ type: "error", message: result.error ?? "Failed to remove" })
+  function requestRemove(target: OptOutData) {
+    setRemoveTarget(target)
+  }
+
+  async function handleConfirmRemove() {
+    if (!removeTarget) return
+    setRemoving(true)
+    try {
+      const result = await removeOptOut(removeTarget.id)
+      if (result.success) {
+        setNotification({ type: "success", message: "Opt-out removed" })
+        setRemoveTarget(null)
+        fetchOptOuts(search)
+      } else {
+        setNotification({ type: "error", message: result.error ?? "Failed to remove" })
+      }
+    } catch {
+      setNotification({ type: "error", message: "Something went wrong. Please try again." })
+    } finally {
+      setRemoving(false)
     }
   }
 
@@ -146,7 +166,7 @@ export default function OptOutsPage() {
                   </td>
                   <td className="px-4 py-3">
                     {isAdmin && (
-                      <Button variant="destructive" size="sm" onClick={() => handleRemove(o.id, o.mobile_no)}>
+                      <Button variant="destructive" size="sm" onClick={() => requestRemove(o)}>
                         Remove
                       </Button>
                     )}
@@ -157,6 +177,17 @@ export default function OptOutsPage() {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title="Remove opt-out"
+        message={removeTarget ? `Remove the opt-out for ${removeTarget.mobile_no}? The customer may receive messages again.` : ""}
+        confirmLabel={removing ? "Working..." : "Remove"}
+        confirmDisabled={removing}
+        variant="danger"
+        onCancel={() => setRemoveTarget(null)}
+        onConfirm={handleConfirmRemove}
+      />
     </div>
   )
 }

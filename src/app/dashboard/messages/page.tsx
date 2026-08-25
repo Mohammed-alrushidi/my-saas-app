@@ -95,26 +95,48 @@ function HistorySection() {
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetch = useCallback(async () => {
     setLoading(true)
+    setError(null)
     setPage(1)
-    const result = await getMessageHistory(typeFilter, statusFilter, 1)
-    setMessages(result.messages)
-    setHasMore(result.hasMore)
-    setLoading(false)
+    try {
+      const result = await getMessageHistory(typeFilter, statusFilter, 1)
+      if (result.error) {
+        setError(result.error)
+        setMessages([])
+        setHasMore(false)
+      } else {
+        setMessages(result.messages)
+        setHasMore(result.hasMore)
+      }
+    } catch {
+      setError("Something went wrong while loading messages. Please try again.")
+    } finally {
+      setLoading(false)
+    }
   }, [typeFilter, statusFilter])
 
   useEffect(() => { fetch() }, [fetch])
 
   async function loadMore() {
     setLoadingMore(true)
-    const nextPage = page + 1
-    const result = await getMessageHistory(typeFilter, statusFilter, nextPage)
-    setMessages((prev) => [...prev, ...result.messages])
-    setHasMore(result.hasMore)
-    setPage(nextPage)
-    setLoadingMore(false)
+    try {
+      const nextPage = page + 1
+      const result = await getMessageHistory(typeFilter, statusFilter, nextPage)
+      if (result.error) {
+        setError(result.error)
+      } else {
+        setMessages((prev) => [...prev, ...result.messages])
+        setHasMore(result.hasMore)
+        setPage(nextPage)
+      }
+    } catch {
+      setError("Something went wrong while loading more messages. Please try again.")
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
   function toggleExpand(id: string) {
@@ -147,7 +169,16 @@ function HistorySection() {
         </select>
       </div>
 
-      {loading ? (
+      {error && (
+        <div className="mb-4 space-y-3">
+          <Notice variant="error">{error}</Notice>
+          <Button variant="outline" onClick={fetch} disabled={loading}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {!error && (loading ? (
         <div className="flex items-center justify-center py-16 text-gray-500">
           <svg className="mr-2 h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -201,7 +232,7 @@ function HistorySection() {
             </div>
           )}
         </>
-      )}
+      ))}
     </div>
   )
 }
@@ -287,22 +318,33 @@ function RenewalSection() {
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<ConfirmResult | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   async function handlePreview() {
     setLoading(true)
     setPreview(null)
     setResult(null)
-    const res = await previewRenewal(days)
-    setPreview(res)
-    setLoading(false)
+    setActionError(null)
+    try {
+      setPreview(await previewRenewal(days))
+    } catch {
+      setActionError("Something went wrong while preparing the preview. Please try again.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleConfirm() {
     setSending(true)
-    const res = await confirmRenewal(days)
-    setResult(res)
-    setPreview(null)
-    setSending(false)
+    setActionError(null)
+    try {
+      setResult(await confirmRenewal(days))
+      setPreview(null)
+    } catch {
+      setActionError("Something went wrong while sending. Check History before retrying — some messages may already have been sent.")
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -364,6 +406,12 @@ function RenewalSection() {
         </div>
       )}
 
+      {actionError && (
+        <Notice variant="error" className="mt-4">
+          {actionError}
+        </Notice>
+      )}
+
       {result && (
         <Notice variant={result.success ? "success" : "error"} className="mt-4">
           {result.success
@@ -382,22 +430,33 @@ function BirthdaySection() {
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<ConfirmResult | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   async function handlePreview() {
     setLoading(true)
     setPreview(null)
     setResult(null)
-    const res = await previewBirthdays()
-    setPreview(res)
-    setLoading(false)
+    setActionError(null)
+    try {
+      setPreview(await previewBirthdays())
+    } catch {
+      setActionError("Something went wrong while preparing the preview. Please try again.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleConfirm() {
     setSending(true)
-    const res = await confirmBirthdays()
-    setResult(res)
-    setPreview(null)
-    setSending(false)
+    setActionError(null)
+    try {
+      setResult(await confirmBirthdays())
+      setPreview(null)
+    } catch {
+      setActionError("Something went wrong while sending. Check History before retrying — some messages may already have been sent.")
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -442,6 +501,12 @@ function BirthdaySection() {
             </>
           )}
         </div>
+      )}
+
+      {actionError && (
+        <Notice variant="error" className="mt-4">
+          {actionError}
+        </Notice>
       )}
 
       {result && (

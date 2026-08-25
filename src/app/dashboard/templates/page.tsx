@@ -6,6 +6,7 @@ import { getTemplates, saveTemplate, resetTemplate } from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
 import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { TemplateData } from "./actions"
@@ -42,6 +43,7 @@ function TemplateCard({
   const [name, setName] = useState(template.name)
   const [saving, setSaving] = useState(false)
   const [resetting, setResetting] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
   const [localNotification, setLocalNotification] = useState<Notification>(null)
 
   const showNotification = notification && template.id.startsWith(notification.message)
@@ -55,24 +57,38 @@ function TemplateCard({
 
   async function handleSave() {
     setSaving(true)
-    const result = await saveTemplate(template.id, body, name)
-    setSaving(false)
-    if (result.success) {
-      setLocalNotification({ type: "success", message: "Saved" })
-    } else {
-      setLocalNotification({ type: "error", message: result.error ?? "Failed to save" })
+    try {
+      const result = await saveTemplate(template.id, body, name)
+      if (result.success) {
+        setLocalNotification({ type: "success", message: "Saved" })
+      } else {
+        setLocalNotification({ type: "error", message: result.error ?? "Failed to save" })
+      }
+    } catch {
+      setLocalNotification({ type: "error", message: "Something went wrong. Please try again." })
+    } finally {
+      setSaving(false)
     }
   }
 
+  function requestReset() {
+    setConfirmReset(true)
+  }
+
   async function handleReset() {
-    if (!confirm("Reset this template to the default?")) return
     setResetting(true)
-    const result = await resetTemplate(template.template_type)
-    setResetting(false)
-    if (result.success) {
-      setLocalNotification({ type: "success", message: "Reset to default" })
-    } else {
-      setLocalNotification({ type: "error", message: result.error ?? "Failed to reset" })
+    try {
+      const result = await resetTemplate(template.template_type)
+      if (result.success) {
+        setConfirmReset(false)
+        setLocalNotification({ type: "success", message: "Reset to default" })
+      } else {
+        setLocalNotification({ type: "error", message: result.error ?? "Failed to reset" })
+      }
+    } catch {
+      setLocalNotification({ type: "error", message: "Something went wrong. Please try again." })
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -115,11 +131,21 @@ function TemplateCard({
           <Button onClick={handleSave} disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
-          <Button variant="outline" onClick={handleReset} disabled={resetting}>
+          <Button variant="outline" onClick={requestReset} disabled={resetting}>
             {resetting ? "Resetting..." : "Reset to Default"}
           </Button>
         </div>
       )}
+      <ConfirmDialog
+        open={confirmReset}
+        title="Reset template"
+        message="Reset this template to the default? Your current wording will be replaced."
+        confirmLabel={resetting ? "Working..." : "Reset"}
+        confirmDisabled={resetting}
+        variant="danger"
+        onCancel={() => setConfirmReset(false)}
+        onConfirm={handleReset}
+      />
       {showNotification && (
         <Notice
           variant={showNotification.type === "success" ? "success" : "error"}

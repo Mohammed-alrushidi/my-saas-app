@@ -10,6 +10,7 @@ type Props = {
   cancelLabel?: string
   confirmLabel?: string
   variant?: "default" | "danger"
+  confirmDisabled?: boolean
   onCancel: () => void
   onConfirm: () => void
 }
@@ -21,6 +22,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   confirmLabel = "Confirm",
   variant = "default",
+  confirmDisabled = false,
   onCancel,
   onConfirm,
 }: Props) {
@@ -61,6 +63,7 @@ export function ConfirmDialog({
             type="button"
             variant={variant === "danger" ? "destructive" : "default"}
             onClick={onConfirm}
+            disabled={confirmDisabled}
           >
             {confirmLabel}
           </Button>
