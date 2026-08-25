@@ -143,7 +143,6 @@ function HistorySection() {
           <option value="sent">Sent</option>
           <option value="failed">Failed</option>
           <option value="skipped">Skipped</option>
-          <option value="delivered">Delivered</option>
           <option value="pending">Pending</option>
         </select>
       </div>

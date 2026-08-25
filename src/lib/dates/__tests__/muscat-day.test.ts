@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { getMuscatBusinessDayBounds } from "@/lib/dates/muscat-day"
+import { addDaysIso, getMuscatBusinessDayBounds, muscatExpiryWindow, muscatMonthPattern } from "@/lib/dates/muscat-day"
 
 describe("getMuscatBusinessDayBounds", () => {
   it("returns a normal Muscat business day for a fixed UTC morning", () => {
@@ -62,5 +62,42 @@ describe("getMuscatBusinessDayBounds", () => {
     const result = getMuscatBusinessDayBounds(new Date("2026-07-01T12:00:00Z"))
 
     expect(new Date(result.endUtcExclusive).getTime() - new Date(result.startUtc).getTime()).toBe(24 * 60 * 60 * 1000)
+  })
+})
+
+describe("addDaysIso", () => {
+  it("adds days across month boundaries", () => {
+    expect(addDaysIso("2025-01-31", 1)).toBe("2025-02-01")
+  })
+  it("adds days across year boundaries", () => {
+    expect(addDaysIso("2025-12-31", 1)).toBe("2026-01-01")
+  })
+  it("handles leap-year February", () => {
+    expect(addDaysIso("2024-02-28", 1)).toBe("2024-02-29")
+    expect(addDaysIso("2024-02-28", 2)).toBe("2024-03-01")
+  })
+})
+
+describe("muscatExpiryWindow", () => {
+  it("anchors on the Muscat business date, not UTC, near midnight", () => {
+    // 20:30 UTC = 00:30 next day in Muscat (+04:00)
+    const now = new Date("2025-06-15T20:30:00Z")
+    const w = muscatExpiryWindow(now, 30)
+    expect(w.start).toBe("2025-06-16")
+    expect(w.end).toBe("2025-07-16")
+  })
+  it("stays on the same Muscat day before midnight UTC", () => {
+    const now = new Date("2025-06-15T19:59:00Z") // 23:59 Muscat
+    expect(muscatExpiryWindow(now, 7).start).toBe("2025-06-15")
+  })
+})
+
+describe("muscatMonthPattern", () => {
+  it("builds a PostgREST like-pattern from the Muscat month", () => {
+    expect(muscatMonthPattern(new Date("2025-06-15T12:00:00Z"))).toBe("____-06-__")
+  })
+  it("uses the Muscat month after midnight rollover", () => {
+    // 2025-07-31 20:30 UTC = 2025-08-01 in Muscat
+    expect(muscatMonthPattern(new Date("2025-07-31T20:30:00Z"))).toBe("____-08-__")
   })
 })
