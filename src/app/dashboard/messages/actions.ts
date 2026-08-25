@@ -65,7 +65,7 @@ export async function getMessageHistory(
   messageType?: string,
   status?: string,
   page: number = 1,
-): Promise<{ messages: MessageRecord[]; hasMore: boolean }> {
+): Promise<{ messages: MessageRecord[]; hasMore: boolean; error?: string }> {
   const supabase = await createClient()
   const profile = await getProfile()
   if (!profile?.company_id) return { messages: [], hasMore: false }
@@ -88,7 +88,10 @@ export async function getMessageHistory(
     query = query.eq("status", status)
   }
 
-  const { data } = await query
+  const { data, error: queryError } = await query
+  if (queryError) {
+    return { messages: [], hasMore: false, error: "Failed to load message history" }
+  }
   const raw = data ?? []
   const hasMore = raw.length > HISTORY_PAGE_SIZE
   const slice = raw.slice(0, HISTORY_PAGE_SIZE)

@@ -1,7 +1,5 @@
 import { getProfile } from "@/lib/supabase/queries"
 import { redirect } from "next/navigation"
-import Link from "next/link"
-import { ArrowLeftToLine } from "lucide-react"
 import { SuperAdminSidebarNav } from "./sidebar-nav"
 import { SuperAdminLogoutButton } from "@/components/super-admin-logout-button"
 
@@ -46,16 +44,6 @@ export default async function SuperAdminLayout({ children }: { children: React.R
           {companyName && (
             <div className="mt-2 truncate px-1 text-xs text-muted-foreground">{companyName}</div>
           )}
-
-          <div className="mt-4 pt-4 border-t">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              <ArrowLeftToLine size={16} className="shrink-0" aria-hidden="true" />
-              Switch to dashboard
-            </Link>
-          </div>
         </div>
       </nav>
 

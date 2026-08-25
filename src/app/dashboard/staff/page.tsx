@@ -7,8 +7,15 @@ import StaffPermissionGrants from "./staff-permission-grants"
 import type { StaffPermissionGrant } from "./staff-permission-grants"
 import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
+
+type PendingStaffAction = {
+  type: "deactivate" | "activate"
+  userId: string
+  name: string
+}
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([])
@@ -17,18 +24,25 @@ export default function StaffPage() {
   const [email, setEmail] = useState("")
   const [fullName, setFullName] = useState("")
   const [inviting, setInviting] = useState(false)
+  const [pendingAction, setPendingAction] = useState<PendingStaffAction | null>(null)
+  const [acting, setActing] = useState(false)
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const refreshData = useCallback(async () => {
     setLoading(true)
-    const [staffData, grantsData] = await Promise.all([listStaff(), getCompanyStaffGrants()])
-    setStaff(staffData)
-    const map: Record<string, StaffPermissionGrant[]> = {}
-    for (const s of grantsData) {
-      map[s.id] = s.grants
+    try {
+      const [staffData, grantsData] = await Promise.all([listStaff(), getCompanyStaffGrants()])
+      setStaff(staffData)
+      const map: Record<string, StaffPermissionGrant[]> = {}
+      for (const s of grantsData) {
+        map[s.id] = s.grants
+      }
+      setGrantsByStaff(map)
+    } catch {
+      setNotification({ type: "error", message: "Failed to load staff. Please refresh the page." })
+    } finally {
+      setLoading(false)
     }
-    setGrantsByStaff(map)
-    setLoading(false)
   }, [])
 
   useEffect(() => { refreshData() }, [refreshData])
@@ -36,37 +50,51 @@ export default function StaffPage() {
   async function handleInvite() {
     if (!email.trim() || !fullName.trim()) return
     setInviting(true)
-    const result = await inviteStaff(email, fullName)
-    setInviting(false)
-    if (result.success) {
-      setEmail("")
-      setFullName("")
-      setNotification({ type: "success", message: "Invitation sent. The staff member will receive an email to set their password." })
-      refreshData()
-    } else {
-      setNotification({ type: "error", message: result.error ?? "Failed to invite" })
+    try {
+      const result = await inviteStaff(email, fullName)
+      if (result.success) {
+        setEmail("")
+        setFullName("")
+        setNotification({ type: "success", message: "Invitation sent. The staff member will receive an email to set their password." })
+        refreshData()
+      } else {
+        setNotification({ type: "error", message: result.error ?? "Failed to invite" })
+      }
+    } catch {
+      setNotification({ type: "error", message: "Something went wrong. Please try again." })
+    } finally {
+      setInviting(false)
     }
   }
 
-  async function handleDeactivate(userId: string, name: string) {
-    if (!confirm(`Deactivate ${name}? They will lose access to the dashboard.`)) return
-    const result = await deactivateStaff(userId)
-    if (result.success) {
-      setNotification({ type: "success", message: "Staff deactivated" })
-      refreshData()
-    } else {
-      setNotification({ type: "error", message: result.error ?? "Failed to deactivate" })
-    }
+  function requestDeactivate(userId: string, name: string) {
+    setPendingAction({ type: "deactivate", userId, name })
   }
 
-  async function handleActivate(userId: string, name: string) {
-    if (!confirm(`Reactivate ${name}?`)) return
-    const result = await activateStaff(userId)
-    if (result.success) {
-      setNotification({ type: "success", message: "Staff reactivated" })
-      refreshData()
-    } else {
-      setNotification({ type: "error", message: result.error ?? "Failed to reactivate" })
+  function requestActivate(userId: string, name: string) {
+    setPendingAction({ type: "activate", userId, name })
+  }
+
+  async function handlePendingConfirm() {
+    if (!pendingAction) return
+    const { type, userId } = pendingAction
+    setActing(true)
+    try {
+      const result = type === "deactivate" ? await deactivateStaff(userId) : await activateStaff(userId)
+      if (result.success) {
+        setNotification({ type: "success", message: type === "deactivate" ? "Staff deactivated" : "Staff reactivated" })
+        setPendingAction(null)
+        refreshData()
+      } else {
+        setNotification({
+          type: "error",
+          message: result.error ?? (type === "deactivate" ? "Failed to deactivate" : "Failed to reactivate"),
+        })
+      }
+    } catch {
+      setNotification({ type: "error", message: "Something went wrong. Please try again." })
+    } finally {
+      setActing(false)
     }
   }
 
@@ -168,11 +196,11 @@ export default function StaffPage() {
                   </td>
                   <td className="px-4 py-3">
                     {s.is_active ? (
-                      <Button variant="destructive" size="sm" onClick={() => handleDeactivate(s.id, s.full_name ?? s.email ?? "")}>
+                      <Button variant="destructive" size="sm" onClick={() => requestDeactivate(s.id, s.full_name ?? s.email ?? "")}>
                         Deactivate
                       </Button>
                     ) : (
-                      <Button variant="ghost" size="sm" onClick={() => handleActivate(s.id, s.full_name ?? s.email ?? "")}>
+                      <Button variant="ghost" size="sm" onClick={() => requestActivate(s.id, s.full_name ?? s.email ?? "")}>
                         Reactivate
                       </Button>
                     )}
@@ -183,6 +211,23 @@ export default function StaffPage() {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        title={pendingAction?.type === "activate" ? "Reactivate staff member" : "Deactivate staff member"}
+        message={
+          pendingAction
+            ? pendingAction.type === "deactivate"
+              ? `Deactivate ${pendingAction.name}? They will lose access to the dashboard.`
+              : `Reactivate ${pendingAction.name}? They will regain access to the dashboard.`
+            : ""
+        }
+        confirmLabel={acting ? "Working..." : pendingAction?.type === "activate" ? "Reactivate" : "Deactivate"}
+        confirmDisabled={acting}
+        variant={pendingAction?.type === "deactivate" ? "danger" : "default"}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={handlePendingConfirm}
+      />
     </div>
   )
 }

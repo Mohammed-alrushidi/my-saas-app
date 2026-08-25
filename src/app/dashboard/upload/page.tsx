@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { parseExcel, confirmImport, deleteImport, type PreviewData } from "./actions"
 import { Notice } from "@/components/ui/notice"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 
 const COLUMN_LABELS: Record<string, string> = {
   policy_no: "Policy No",
@@ -23,7 +24,31 @@ export default function UploadPage() {
   const [success, setSuccess] = useState<{ total: number; valid: number; invalid: number; importId?: string } | null>(null)
   const [showErrors, setShowErrors] = useState(false)
   const [fileName, setFileName] = useState<string>("")
+  const [confirmUndo, setConfirmUndo] = useState(false)
   const fileDataRef = useRef<File | null>(null)
+
+  async function handleUndoImport() {
+    if (!success?.importId) return
+    setLoading(true)
+    try {
+      const result = await deleteImport(success.importId)
+      if (result.success) {
+        setSuccess(null)
+        setPreview(null)
+        setError(null)
+        setFileName("")
+        setConfirmUndo(false)
+        if (fileRef.current) fileRef.current.value = ""
+        router.refresh()
+      } else {
+        setError(result.error ?? "Failed to undo import")
+      }
+    } catch {
+      setError("Something went wrong. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   if (success) {
     return (
@@ -53,26 +78,22 @@ export default function UploadPage() {
               Upload another
             </Button>
             {success.importId && (
-              <Button variant="destructive" onClick={async () => {
-                if (!confirm("Undo this import? All imported records will be permanently deleted.")) return
-                setLoading(true)
-                const result = await deleteImport(success.importId!)
-                if (result.success) {
-                  setSuccess(null)
-                  setPreview(null)
-                  setError(null)
-                  setFileName("")
-                  if (fileRef.current) fileRef.current.value = ""
-                  router.refresh()
-                } else {
-                  setError(result.error ?? "Failed to undo import")
-                }
-                setLoading(false)
-              }} disabled={loading}>
+              <Button variant="destructive" onClick={() => setConfirmUndo(true)} disabled={loading}>
                 {loading ? "Undoing..." : "Undo import"}
               </Button>
             )}
           </div>
+          {error && <Notice variant="error" className="mt-4">{error}</Notice>}
+          <ConfirmDialog
+            open={confirmUndo}
+            title="Undo import"
+            message="Undo this import? All imported records will be permanently deleted."
+            confirmLabel={loading ? "Undoing..." : "Undo import"}
+            confirmDisabled={loading}
+            variant="danger"
+            onCancel={() => setConfirmUndo(false)}
+            onConfirm={handleUndoImport}
+          />
         </div>
       </div>
     )

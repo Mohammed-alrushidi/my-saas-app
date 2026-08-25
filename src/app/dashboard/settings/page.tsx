@@ -6,6 +6,7 @@ import { getSettings, saveSettings, resetSettings } from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
 import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { SettingsData } from "./actions"
@@ -19,6 +20,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [resetting, setResetting] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
   const [canEdit, setCanEdit] = useState(false)
   const [role, setRole] = useState<string | null>(null)
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null)
@@ -44,25 +46,39 @@ export default function SettingsPage() {
 
   async function handleSave() {
     setSaving(true)
-    const result = await saveSettings(reminderDays, isActive)
-    setSaving(false)
-    setNotification({
-      type: result.success ? "success" : "error",
-      message: result.success ? "Settings saved" : result.error ?? "Failed to save",
-    })
+    try {
+      const result = await saveSettings(reminderDays, isActive)
+      setNotification({
+        type: result.success ? "success" : "error",
+        message: result.success ? "Settings saved" : result.error ?? "Failed to save",
+      })
+    } catch {
+      setNotification({ type: "error", message: "Something went wrong. Please try again." })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function requestReset() {
+    setConfirmReset(true)
   }
 
   async function handleReset() {
-    if (!confirm("Reset reminder settings to defaults?")) return
     setResetting(true)
-    const result = await resetSettings()
-    setResetting(false)
-    if (result.success) {
-      setReminderDays([30, 14, 7])
-      setIsActive(true)
-      setNotification({ type: "success", message: "Reset to default" })
-    } else {
-      setNotification({ type: "error", message: result.error ?? "Failed to reset" })
+    try {
+      const result = await resetSettings()
+      if (result.success) {
+        setReminderDays([30, 14, 7])
+        setIsActive(true)
+        setConfirmReset(false)
+        setNotification({ type: "success", message: "Reset to default" })
+      } else {
+        setNotification({ type: "error", message: result.error ?? "Failed to reset" })
+      }
+    } catch {
+      setNotification({ type: "error", message: "Something went wrong. Please try again." })
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -142,11 +158,21 @@ export default function SettingsPage() {
             <Button onClick={handleSave} disabled={saving}>
               {saving ? "Saving..." : "Save"}
             </Button>
-            <Button variant="outline" onClick={handleReset} disabled={resetting}>
+            <Button variant="outline" onClick={requestReset} disabled={resetting}>
               {resetting ? "Resetting..." : "Reset to Default"}
             </Button>
           </div>
         )}
+        <ConfirmDialog
+          open={confirmReset}
+          title="Reset reminder settings"
+          message="Reset reminder settings to defaults? Your current configuration will be replaced."
+          confirmLabel={resetting ? "Working..." : "Reset"}
+          confirmDisabled={resetting}
+          variant="danger"
+          onCancel={() => setConfirmReset(false)}
+          onConfirm={handleReset}
+        />
         {notification && (
           <Notice
             variant={notification.type === "success" ? "success" : "error"}
