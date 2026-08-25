@@ -64,7 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-import { previewRenewal, confirmRenewal, getMessageHistory, previewBirthdays, confirmBirthdays, previewBroadcast, confirmBroadcast } from "@/app/dashboard/messages/actions"
+import { previewRenewal, confirmRenewal, getMessageHistory, previewBirthdays, confirmBirthdays } from "@/app/dashboard/messages/actions"
 import { getMuscatBusinessDayBounds } from "@/lib/dates/muscat-day"
 
 describe("previewRenewal", () => {
@@ -717,38 +717,6 @@ describe("confirmBirthdays", () => {
     } finally {
       vi.useRealTimers()
     }
-  })
-})
-
-describe("previewBroadcast", () => {
-  it("rejects non-admin role", async () => {
-    mockGetProfile.mockReturnValueOnce({
-      id: "test-user-id",
-      company_id: "test-company-id",
-      role: "staff",
-      companies: { name: "Test Company" },
-    })
-
-    const result = await previewBroadcast("any body")
-
-    expect(result.error).toContain("Only admins")
-    expect(result.count).toBe(0)
-  })
-})
-
-describe("confirmBroadcast", () => {
-  it("rejects non-admin role", async () => {
-    mockGetProfile.mockReturnValueOnce({
-      id: "test-user-id",
-      company_id: "test-company-id",
-      role: "staff",
-      companies: { name: "Test Company" },
-    })
-
-    const result = await confirmBroadcast("any body")
-
-    expect(result.error).toContain("Only admins")
-    expect(result.success).toBe(false)
   })
 })
 

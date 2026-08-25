@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getProfile } from "@/lib/supabase/queries"
 import { sendMessages } from "@/lib/messaging/send"
-import { getMuscatBusinessDayBounds } from "@/lib/dates/muscat-day"
+import { getMuscatBusinessDayBounds, muscatExpiryWindow } from "@/lib/dates/muscat-day"
+import { isBirthdayToday } from "@/lib/dates/birthday"
 
 function renderTemplate(
   body: string,
@@ -19,10 +20,6 @@ function renderTemplate(
     .replace(/\{\{days_remaining\}\}/g, daysRemaining != null ? String(daysRemaining) : "")
     .replace(/\{\{new_premium_vat_amount\}\}/g, customer.new_premium_vat_amount != null ? String(customer.new_premium_vat_amount) : "")
     .replace(/\{\{company_name\}\}/g, companyName)
-}
-
-function todayStr(): string {
-  return new Date().toISOString().split("T")[0]
 }
 
 function daysBetween(future: string, today: string): number {
@@ -137,30 +134,27 @@ async function getEligibleRenewals(days: number) {
   const profile = await getProfile()
   if (!profile?.company_id) return { customers: [], companyName: "", template: null, existingKeys: new Set<string>(), totalInRange: 0 }
 
-  const now = new Date()
-  const future = new Date(now.getTime() + days * 86400000)
-  const today = todayStr()
-  const futureStr = future.toISOString().split("T")[0]
+  const { start, end } = muscatExpiryWindow(new Date(), days)
 
   const { count: totalInRange } = await supabase
     .from("customer_records")
     .select("*", { count: "exact", head: true })
     .eq("company_id", profile.company_id)
-    .gte("policy_expiry_date", today)
-    .lte("policy_expiry_date", futureStr)
+    .gte("policy_expiry_date", start)
+    .lte("policy_expiry_date", end)
 
   const { data: customers } = await supabase
     .from("customer_records")
     .select("*")
     .eq("company_id", profile.company_id)
     .eq("communication_status", "allowed")
-    .gte("policy_expiry_date", today)
-    .lte("policy_expiry_date", futureStr)
+    .gte("policy_expiry_date", start)
+    .lte("policy_expiry_date", end)
     .order("policy_expiry_date", { ascending: true })
 
   if (!customers || customers.length === 0) return { customers: [], companyName: "", template: null, existingKeys: new Set<string>(), totalInRange: totalInRange ?? 0 }
 
-  const { startUtc, endUtcExclusive } = getMuscatBusinessDayBounds()
+  const bounds = getMuscatBusinessDayBounds()
 
   const { data: existingMessages } = await supabase
     .from("messages")
@@ -168,8 +162,8 @@ async function getEligibleRenewals(days: number) {
     .eq("company_id", profile.company_id)
     .eq("message_type", "renewal")
     .eq("reminder_stage", days)
-    .gte("created_at", startUtc)
-    .lt("created_at", endUtcExclusive)
+    .gte("created_at", bounds.startUtc)
+    .lt("created_at", bounds.endUtcExclusive)
 
   const existingKeys = new Set(existingMessages?.map((m) => m.customer_record_id) ?? [])
 
@@ -211,7 +205,7 @@ export async function previewRenewal(days: number): Promise<PreviewResult> {
 
   const sample = eligible.slice(0, 3).map((c) => ({
     mobile: c.mobile_no,
-    body: renderTemplate(template.body, c, companyName, daysBetween(c.policy_expiry_date, todayStr())),
+    body: renderTemplate(template.body, c, companyName, daysBetween(c.policy_expiry_date, getMuscatBusinessDayBounds().businessDate)),
   }))
 
   return { count: eligible.length, sample }
@@ -243,7 +237,7 @@ export async function confirmRenewal(days: number): Promise<ConfirmResult> {
 
   const recipients = eligible.map((c) => ({
     mobile: c.mobile_no,
-    body: renderTemplate(template.body, c, companyName, daysBetween(c.policy_expiry_date, todayStr())),
+    body: renderTemplate(template.body, c, companyName, daysBetween(c.policy_expiry_date, getMuscatBusinessDayBounds().businessDate)),
   }))
 
   const results = await sendMessages(recipients)
@@ -299,7 +293,6 @@ async function getEligibleBirthdays() {
   // Fetch customers with non-null driver_dob aligned to Muscat business date
   const bounds = getMuscatBusinessDayBounds()
   const businessDate = bounds.businessDate
-  const [matchMonth, matchDay] = businessDate.split("-").slice(1)
 
   const { data: allCustomers, error: customersErr } = await supabase
     .from("customer_records")
@@ -308,14 +301,10 @@ async function getEligibleBirthdays() {
     .eq("communication_status", "allowed")
     .not("driver_dob", "is", null)
 
-  if (customersErr) return { customers: [], companyName, companyId: profile.company_id, template, templateError, customerError: customersErr.message, existingKeys: new Set<string>(), role: profile.role }
+  if (customersErr) return { customers: [], companyName, companyId: profile.company_id, template, templateError: customersErr.message, customerError: customersErr.message, existingKeys: new Set<string>(), role: profile.role }
 
   const customers = (allCustomers ?? [])
-    .filter((c) => {
-      if (!c.driver_dob) return false
-      const parts = String(c.driver_dob).split("-")
-      return parts[1] === matchMonth && parts[2] === matchDay
-    })
+    .filter((c) => isBirthdayToday(c.driver_dob, businessDate))
     .sort((a, b) => String(a.driver_dob).localeCompare(String(b.driver_dob)))
 
   const { startUtc, endUtcExclusive } = bounds
@@ -392,78 +381,4 @@ export async function confirmBirthdays(): Promise<ConfirmResult> {
   return { success: true, sent: messages.filter((m) => m.status === "sent").length, skipped: customers.length - eligible.length }
 }
 
-// ─── Broadcast ──────────────────────────────────────────────
-
-async function getEligibleBroadcastCustomers() {
-  const supabase = await createClient()
-  const profile = await getProfile()
-  if (!profile?.company_id) return { customers: [], companyName: "" }
-
-  const { data } = await supabase
-    .from("customer_records")
-    .select("*")
-    .eq("company_id", profile.company_id)
-    .eq("communication_status", "allowed")
-    .order("customer_name", { ascending: true })
-
-  const companyName = (profile as any).companies?.name ?? ""
-
-  return { customers: data ?? [], companyName }
-}
-
-export async function previewBroadcast(body: string): Promise<PreviewResult> {
-  const profile = await getProfile()
-  if (!profile?.company_id) return { count: 0, sample: [], error: "No company assigned" }
-  if (profile.role !== "company_admin") return { count: 0, sample: [], error: "Only admins can send messages" }
-
-  if (!body.trim()) return { count: 0, sample: [], error: "Message body cannot be empty" }
-
-  const { customers, companyName } = await getEligibleBroadcastCustomers()
-  if (customers.length === 0) return { count: 0, sample: [] }
-
-  const sample = customers.slice(0, 3).map((c) => ({
-    mobile: c.mobile_no,
-    body: renderTemplate(body, c, companyName),
-  }))
-
-  return { count: customers.length, sample }
-}
-
-export async function confirmBroadcast(body: string): Promise<ConfirmResult> {
-  const profile = await getProfile()
-  if (!profile?.company_id) return { success: false, sent: 0, skipped: 0, error: "No company assigned" }
-  if (profile.role !== "company_admin") return { success: false, sent: 0, skipped: 0, error: "Only admins can send messages" }
-
-  if (!body.trim()) return { success: false, sent: 0, skipped: 0, error: "Message body cannot be empty" }
-
-  const supabase = await createClient()
-
-  const { customers, companyName } = await getEligibleBroadcastCustomers()
-  if (customers.length === 0) return { success: true, sent: 0, skipped: 0 }
-
-  const recipients = customers.map((c) => ({
-    mobile: c.mobile_no,
-    body: renderTemplate(body, c, companyName),
-  }))
-
-  const results = await sendMessages(recipients)
-  const now = new Date().toISOString()
-  const messages = customers.map((c, i) => ({
-    company_id: profile.company_id,
-    customer_record_id: c.id,
-    message_type: "broadcast" as const,
-    recipient_mobile: c.mobile_no,
-    template_used: null,
-    message_body: recipients[i].body,
-    status: (results[i].success ? "sent" : "failed") as "sent" | "failed",
-    provider_message_id: results[i].providerMessageId ?? null,
-    failure_reason: results[i].error ?? null,
-    sent_at: results[i].success ? now : null,
-  }))
-
-  const { error } = await supabase.from("messages").insert(messages)
-  if (error) return { success: false, sent: 0, skipped: 0, error: error.message }
-
-  revalidatePath("/dashboard/messages")
-  return { success: true, sent: messages.filter((m) => m.status === "sent").length, skipped: 0 }
-}
+// ─── Broadcast (selected-recipient flow lives in dashboard/broadcast) ───────

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getMuscatBusinessDayBounds, type MuscatBusinessDayBounds } from "@/lib/dates/muscat-day"
+import { isBirthdayToday } from "@/lib/dates/birthday"
 
 export type SchedulerResult = {
   companiesProcessed: number
@@ -249,10 +250,6 @@ async function processBirthdays(
 
   if (!template) return
 
-  const [year, month, day] = date.split("-").map(Number)
-  const monthStr = String(month).padStart(2, "0")
-  const dayStr = String(day).padStart(2, "0")
-
   const { data: allCustomers } = await supabase
     .from("customer_records")
     .select("id, customer_name, mobile_no, veh_make_model, policy_expiry_date, new_premium_vat_amount, communication_status, driver_dob")
@@ -262,11 +259,9 @@ async function processBirthdays(
 
   if (!allCustomers || allCustomers.length === 0) return
 
-  const customers = (allCustomers as CustomerRecord[]).filter((c: any) => {
-    if (!c.driver_dob) return false
-    const parts = String(c.driver_dob).split("-")
-    return parts[1] === monthStr && parts[2] === dayStr
-  })
+  const customers = (allCustomers as CustomerRecord[]).filter((c: CustomerRecord) =>
+    isBirthdayToday(c.driver_dob, date),
+  )
 
   if (customers.length === 0) return
 

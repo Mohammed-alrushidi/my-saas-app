@@ -1,4 +1,10 @@
 import { createClient } from "@/lib/supabase/server"
+import {
+  getMuscatBusinessDayBounds,
+  muscatExpiryWindow,
+  muscatMonthPattern,
+} from "@/lib/dates/muscat-day"
+import { isBirthdayToday } from "@/lib/dates/birthday"
 
 export async function getProfile() {
   const supabase = await createClient()
@@ -112,73 +118,61 @@ export async function getActiveCustomerCount() {
   return count ?? 0
 }
 
-export async function getUpcomingExpiries(days: number, limit = 50) {
+export async function getUpcomingExpiries(days: number, limit = 50, now: Date = new Date()) {
   const supabase = await createClient()
   const profile = await getProfile()
   if (!profile?.company_id) return []
 
-  const now = new Date()
-  const future = new Date(now.getTime() + days * 86400000)
-  const todayStr = now.toISOString().split("T")[0]
-  const futureStr = future.toISOString().split("T")[0]
+  const { start, end } = muscatExpiryWindow(now, days)
 
   const { data } = await supabase
     .from("customer_records")
     .select("*")
     .eq("company_id", profile.company_id)
-    .gte("policy_expiry_date", todayStr)
-    .lte("policy_expiry_date", futureStr)
+    .gte("policy_expiry_date", start)
+    .lte("policy_expiry_date", end)
     .order("policy_expiry_date", { ascending: true })
     .limit(limit)
 
   return data ?? []
 }
 
-export async function getExpiriesCount(days: number) {
+export async function getExpiriesCount(days: number, now: Date = new Date()) {
   const supabase = await createClient()
   const profile = await getProfile()
   if (!profile?.company_id) return 0
 
-  const now = new Date()
-  const future = new Date(now.getTime() + days * 86400000)
-  const todayStr = now.toISOString().split("T")[0]
-  const futureStr = future.toISOString().split("T")[0]
+  const { start, end } = muscatExpiryWindow(now, days)
 
   const { count } = await supabase
     .from("customer_records")
     .select("*", { count: "exact", head: true })
     .eq("company_id", profile.company_id)
-    .gte("policy_expiry_date", todayStr)
-    .lte("policy_expiry_date", futureStr)
+    .gte("policy_expiry_date", start)
+    .lte("policy_expiry_date", end)
 
   return count ?? 0
 }
 
-export async function getBirthdaysThisMonth() {
+export async function getBirthdaysThisMonth(now: Date = new Date()) {
   const supabase = await createClient()
   const profile = await getProfile()
   if (!profile?.company_id) return []
 
-  const now = new Date()
-  const month = now.getMonth() + 1
-  const day = now.getDate()
+  // SQL-side month match (any birth year) — the previous client-side filter
+  // after a limit(50) silently truncated the month list on larger datasets.
+  const pattern = muscatMonthPattern(now)
 
   const { data } = await supabase
     .from("customer_records")
     .select("*")
     .eq("company_id", profile.company_id)
     .not("driver_dob", "is", null)
+    .like("driver_dob", pattern)
     .order("driver_dob", { ascending: true })
     .limit(50)
 
-  if (!data) return []
-
-  const monthStr = String(month).padStart(2, "0")
-  return data.filter((r) => {
-    if (!r.driver_dob) return false
-    const dobMonth = String(r.driver_dob).slice(5, 7)
-    return dobMonth === monthStr
-  })
+  return data ?? []
 }
 
 export async function getReminderSettings() {
@@ -229,15 +223,8 @@ export async function getCompanyTemplates() {
   return data ?? []
 }
 
-export async function getBirthdaysToday() {
-  const all = await getBirthdaysThisMonth()
-  const now = new Date()
-  const dayStr = String(now.getDate()).padStart(2, "0")
-  const monthStr = String(now.getMonth() + 1).padStart(2, "0")
-
-  return all.filter((r) => {
-    if (!r.driver_dob) return false
-    const parts = String(r.driver_dob).split("-")
-    return parts[1] === monthStr && parts[2] === dayStr
-  })
+export async function getBirthdaysToday(now: Date = new Date()) {
+  const all = await getBirthdaysThisMonth(now)
+  const businessDate = getMuscatBusinessDayBounds(now).businessDate
+  return all.filter((r) => isBirthdayToday(r.driver_dob, businessDate))
 }
