@@ -64,6 +64,7 @@ export default function BroadcastPage() {
   const [canPrepare, setCanPrepare] = useState(false)
   const [canSend, setCanSend] = useState(false)
   const [role, setRole] = useState<string | null>(null)
+  const [companyName, setCompanyName] = useState<string>("")
 
   // Submission idempotency state
   const [submissionId, setSubmissionId] = useState<string | null>(null)
@@ -85,6 +86,7 @@ export default function BroadcastPage() {
       setCanPrepare(caps.canPrepareBroadcast)
       setCanSend(caps.canSendBroadcast)
       setRole(caps.role)
+      setCompanyName(caps.companyName ?? "")
       setPageReady(true)
 
       if (caps.canPrepareBroadcast) {
@@ -168,7 +170,7 @@ export default function BroadcastPage() {
     .slice(0, 3)
     .map((r) => ({
       mobile: r.mobile_no,
-      body: body.replace(/\{\{customer_name\}\}/g, r.customer_name).replace(/\{\{company_name\}\}/g, ""),
+      body: body.replace(/\{\{customer_name\}\}/g, r.customer_name).replace(/\{\{company_name\}\}/g, companyName),
     }))
 
   async function handleLoadTemplate() {
