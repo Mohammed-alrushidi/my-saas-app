@@ -1199,6 +1199,104 @@ describe("confirmBroadcastSelected", () => {
   })
 })
 
+describe("tenant isolation — company name resolution", () => {
+  beforeEach(() => {
+    mockResolveValue = { data: null, error: null }
+    mockUpdateError = null
+    mockSingleReturn = null
+    mockChain.insert.mockClear()
+    mockSendMessages.mockClear()
+  })
+
+  const allowedCustomer = {
+    id: "c1",
+    customer_name: "Alice",
+    mobile_no: "+9****11",
+    policy_no: "P1",
+    communication_status: "allowed",
+  }
+
+  function setupSuccessfulClaim() {
+    mockResolveValue = { data: [allowedCustomer], error: null }
+    mockInsertError = null
+    mockUpdateError = null
+  }
+
+  it("renders {{company_name}} from the caller's OWN company embed only", async () => {
+    setupSuccessfulClaim()
+    mockGetProfile.mockReturnValueOnce({
+      id: "test-user-id",
+      company_id: "test-company-id",
+      role: "company_admin",
+      is_active: true,
+      companies: { id: "test-company-id", name: "Test Company" },
+    })
+
+    const result = await confirmBroadcastSelected(
+      "Dear {{customer_name}}, from {{company_name}}",
+      ["c1"],
+      TEST_SUB_ID,
+    )
+
+    expect(result.success).toBe(true)
+    const sentRecipients = mockSendMessages.mock.calls[0][0]
+    expect(sentRecipients[0].body).toBe("Dear Alice, from Test Company")
+  })
+
+  it("degrades to empty company_name when the embed is denied by RLS — never another company's name", async () => {
+    // Pre-migration behavior: RLS strips the companies embed entirely.
+    // The message must NOT leak any other tenant's name.
+    setupSuccessfulClaim()
+    mockGetProfile.mockReturnValueOnce({
+      id: "test-user-id",
+      company_id: "test-company-id",
+      role: "company_admin",
+      is_active: true,
+      companies: null,
+    })
+
+    const result = await confirmBroadcastSelected(
+      "Dear {{customer_name}}, from [{{company_name}}]",
+      ["c1"],
+      TEST_SUB_ID,
+    )
+
+    expect(result.success).toBe(true)
+    const sentRecipients = mockSendMessages.mock.calls[0][0]
+    expect(sentRecipients[0].body).toBe("Dear Alice, from []")
+    expect(sentRecipients[0].body).not.toContain("Test Company")
+    expect(sentRecipients[0].body).not.toContain("{{company_name}}")
+  })
+
+  it("scopes the submission claim and history rows to the caller's own company_id", async () => {
+    setupSuccessfulClaim()
+    mockGetProfile.mockReturnValueOnce({
+      id: "test-user-id",
+      company_id: "my-company-1",
+      role: "company_admin",
+      is_active: true,
+      companies: { id: "my-company-1", name: "My Company" },
+    })
+
+    await confirmBroadcastSelected("Hello {{company_name}}", ["c1"], TEST_SUB_ID)
+
+    // Claim insert row must carry the caller's own company_id
+    const claimRow = mockChain.insert.mock.calls.find(
+      (args: unknown[]) => !Array.isArray(args[0]) && (args[0] as { submission_key?: string } | null)?.submission_key,
+    )?.[0] as { company_id: string }
+    expect(claimRow.company_id).toBe("my-company-1")
+
+    // History insert rows must carry the caller's own company_id
+    const historyRows = mockChain.insert.mock.calls.find(
+      (args: unknown[]) => Array.isArray(args[0]) && (args[0][0] as { message_type?: string })?.message_type === "broadcast",
+    )?.[0] as Array<{ company_id: string }>
+    expect(historyRows[0].company_id).toBe("my-company-1")
+
+    // Rendered body used ONLY the caller's own embedded company
+    expect(mockSendMessages.mock.calls[0][0][0].body).toBe("Hello My Company")
+  })
+})
+
 describe("getBroadcastRecipientsPaginated", () => {
   beforeEach(() => {
     mockResolveValue = { data: null, error: null }

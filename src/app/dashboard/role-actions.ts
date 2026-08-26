@@ -10,6 +10,8 @@ export type DashboardCapabilities = {
   canEditSettings: boolean
   canPrepareBroadcast: boolean
   canSendBroadcast: boolean
+  /** Name of the caller's own company (from the profiles -> companies embed). */
+  companyName: string | null
 }
 
 export async function getCurrentRole(): Promise<string | null> {
@@ -34,5 +36,6 @@ export async function getDashboardCapabilities(): Promise<DashboardCapabilities 
     canEditSettings,
     canPrepareBroadcast,
     canSendBroadcast: profile.role === "company_admin",
+    companyName: (profile.companies as { name?: string } | null)?.name ?? null,
   }
 }
