@@ -25,7 +25,7 @@ Set all of the following in your hosting environment (Vercel Dashboard → Proje
 | Variable | Where to get it | Notes |
 |----------|----------------|-------|
 | `TWILIO_ACCOUNT_SID` | Twilio Console | **Server-only secret** |
-| `TWILIO_AUTH_TOKEN` | Twilio Console | **Server-only secret** |
+| `TWILIO_AUTH_TOKEN` | Twilio Console | **Server-only secret** — also required for the delivery-status webhook; without it the webhook rejects all callbacks (503, fail closed) |
 | `TWILIO_WHATSAPP_NUMBER` | Twilio Console → WhatsApp → Senders | Sandbox: `+14155238886` |
 
 ### Site URL

@@ -115,6 +115,13 @@ This project uses the **Twilio WhatsApp Sandbox** for development and testing.
 **Mock mode (MOCK_MODE):**
 For MVP/testing without Twilio, set `MOCK_MODE=true`. This uses a mock provider that simulates success without sending any real WhatsApp message. Mock IDs are prefixed with `mock-sid-`. No Twilio credentials are required when mock mode is enabled.
 
+**Delivery status webhook (`POST /api/messaging/status`):**
+Receives Twilio delivery callbacks when `SITE_URL` is configured. Security and integrity properties:
+- **Fails closed** — requests are rejected with 503 unless `TWILIO_AUTH_TOKEN` is configured; unsigned or forged callbacks get 403 and never touch the database.
+- **Signature verified** against the canonical public URL (honors `x-forwarded-proto`/`x-forwarded-host` behind proxies).
+- **Idempotent and order-safe** — duplicate and out-of-order callbacks never regress a status; lifecycle is forward-only (`queued → sent → delivered`, terminal `undelivered`/`failed`). Callbacks for unknown SIDs answer 200 without writing.
+- Statuses outside the delivery lifecycle (e.g. inbound `received`) are ignored.
+
 **Production path:**
 For real customer messaging, upgrade to a production WhatsApp Business Account (WABA) through a Meta BSP. This requires business verification, WABA approval, and pre-approved message templates. This is currently postponed.
 
@@ -211,7 +218,7 @@ Compiles clean. Run this before pushing to verify no errors.
 npm test
 ```
 
-Uses vitest. **185 tests across 12 files:**
+Uses vitest. **300 tests across 14 files:**
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -227,6 +234,8 @@ Uses vitest. **185 tests across 12 files:**
 | `super-admin-actions.test.ts` | 8 | Super admin create/toggle company with role rejection |
 | `super-admin-dashboard.test.ts` | 5 | Dashboard data function with role rejection and PII-free data shape |
 | `permissions.test.ts` | 45 | `can()` helper, permission request/approve/reject workflow, role enforcement |
+| `status.test.ts` | 14 | Delivery-status webhook core — Twilio status mapping, forward-only transitions, idempotent duplicates, out-of-order callbacks, terminal failure locks, DB failures |
+| `status-route.test.ts` | 13 | Webhook route — valid/forged signatures, fail-closed auth, proxy-forwarded URLs, duplicate replay, unknown SID, generic error responses |
 
 ---
 
@@ -262,8 +271,8 @@ Uses vitest. **185 tests across 12 files:**
 - [x] Server-side role checks for all admin actions
 - [x] `.env.example` with documented variables and placeholders
 - [x] `docs/deployment.md` — full deployment and rollback checklist
-- [x] README updated with current test count (185), correct env vars, and production instructions
-- [x] All 185 tests passing, build clean
+- [x] README updated with current test count (300), webhook security notes, and production instructions
+- [x] All 300 tests passing, build clean
 
 ### Remaining before production
 - [ ] **Twilio WABA production number** — requires Meta business verification, WABA approval, and template pre-approval
@@ -278,7 +287,7 @@ Uses vitest. **185 tests across 12 files:**
 
 ## Current Roadmap
 
-1. **Testing: largely complete** — 185 tests across 12 files covering all flows plus role rejection, permission enforcement, and super admin dashboard.
+1. **Testing: largely complete** — 300 tests across 14 files covering all flows plus role rejection, permission enforcement, super admin dashboard, and delivery-status webhook integrity.
 2. **Scheduler MVP: complete** — Cron endpoint for renewal reminders and birthday greetings (Asia/Muscat timezone, exact-stage matching, dedupe, opted-out exclusion). Messages inserted as `status="sent"` — no real WhatsApp provider call yet.
 3. **Permission system: complete** — Staff can request permissions, admin approves/revokes, server enforcement, UI reflection. See `docs/permissions-ADR.md`.
 4. **Design unification: complete** — Button unification, spacing/table/text polish, card elevation, alert/dialog tokens. See `docs/checkpoint-2026-06-27-stable-mock-broadcast.md`.
