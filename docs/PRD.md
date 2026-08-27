@@ -158,6 +158,9 @@ Build a multi-tenant SaaS platform where insurance companies can upload Excel cu
 | status | text | pending, sent, failed, skipped |
 | failure_reason | text | |
 | reminder_stage | int | Days before expiry (for renewal type) |
+| provider_message_id | text | Provider identifier used by delivery-status callbacks |
+| delivery_status | text | queued, sent, delivered, undelivered, failed |
+| idempotency_key | text | Unique scheduler dispatch identity; null for non-scheduler messages |
 | sent_at | timestamptz | |
 | created_at | timestamptz | |
 
@@ -311,6 +314,16 @@ Reply STOP to unsubscribe.
 4. Invalid mobile numbers must never receive messages
 5. Duplicate reminders for same Policy No + same reminder stage are prevented
 6. Opt-out can happen via: Reply STOP (future), company manual add, import detection
+
+## 11A. Automated Scheduler Delivery Lifecycle (C3)
+
+- The scheduler processes only active companies, enabled reminder settings, tenant-scoped templates, and tenant-scoped eligible customer records.
+- Each renewal stage or birthday dispatch is atomically claimed with a durable idempotency key before any provider call. Concurrent or duplicate runs must not call the provider twice for the same claim.
+- A winning claim starts as `pending`. Provider acceptance moves it to `sent` with `provider_message_id`, `sent_at`, and the provider's C2-mapped initial `delivery_status` when available. Provider rejection or error moves it to `failed` with a safe `failure_reason` and no `sent_at`.
+- Claim finalization is conditional on the same company, idempotency key, and `pending` state so one tenant or concurrent process cannot finalize another claim.
+- `MOCK_MODE=true` remains the no-network default. Live sending requires both explicit live gates and complete, valid Twilio plus public HTTPS callback configuration; otherwise the scheduler fails before creating claims or calling the provider.
+- Later Twilio callbacks use the existing C2 non-regressing, duplicate-safe, terminal-state delivery-status transitions.
+- C3 does not add retries, resend UI, inbound `STOP`, live WhatsApp activation, environment changes, or database migrations.
 
 ## 12. Definition of Done
 The MVP is complete when:

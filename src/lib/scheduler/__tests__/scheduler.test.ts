@@ -1,10 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { runScheduler, addDaysToDate } from "../run"
 
-let mockResolveValue: any = { data: null, error: null }
-let mockResponseQueue: any[] = []
+const messagingMocks = vi.hoisted(() => ({
+  getProvider: vi.fn(),
+  sendMessages: vi.fn(),
+}))
 
-const mockChain: any = {
+let mockResolveValue: unknown = { data: null, error: null }
+let mockResponseQueue: unknown[] = []
+let mockFinalizeQueue: unknown[] = []
+
+const mockFinalizeChain: Record<"eq" | "select", ReturnType<typeof vi.fn>> = {
+  eq: vi.fn(() => mockFinalizeChain),
+  select: vi.fn(() => Promise.resolve(mockFinalizeQueue.shift() ?? { data: [{ id: "message-id" }], error: null })),
+}
+
+const mockChain: Record<string, ReturnType<typeof vi.fn>> = {
   from: vi.fn(() => mockChain),
   select: vi.fn(() => mockChain),
   eq: vi.fn(() => mockChain),
@@ -18,7 +29,8 @@ const mockChain: any = {
   single: vi.fn(() => Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue)),
   maybeSingle: vi.fn(() => Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue)),
   insert: vi.fn(() => Promise.resolve(mockResponseQueue.shift() ?? { error: null })),
-  then: vi.fn((onfulfilled: any) =>
+  update: vi.fn(() => mockFinalizeChain),
+  then: vi.fn((onfulfilled: (value: unknown) => unknown) =>
     Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue).then(onfulfilled)),
 }
 
@@ -34,10 +46,28 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(() => mockChain),
 }))
 
+vi.mock("@/lib/messaging/provider", () => ({
+  getProvider: messagingMocks.getProvider,
+}))
+
+vi.mock("@/lib/messaging/send", () => ({
+  sendMessages: messagingMocks.sendMessages,
+}))
+
 beforeEach(() => {
   mockResponseQueue = []
+  mockFinalizeQueue = []
   mockResolveValue = { data: null, error: null }
   vi.clearAllMocks()
+  messagingMocks.getProvider.mockReturnValue({ name: "test-provider", send: vi.fn() })
+  messagingMocks.sendMessages.mockImplementation(async (recipients: { mobile: string }[]) =>
+    recipients.map((recipient, index) => ({
+      success: true,
+      providerMessageId: `SM${index + 1}`,
+      deliveryStatus: "queued",
+      mobile: recipient.mobile,
+    })),
+  )
 })
 
 afterEach(() => {
@@ -74,6 +104,18 @@ describe("runScheduler", () => {
     expect(result.errors).toHaveLength(0)
   })
 
+  it("fails before any claim or provider call when provider configuration is invalid", async () => {
+    messagingMocks.getProvider.mockImplementationOnce(() => {
+      throw new Error("Invalid live provider configuration")
+    })
+
+    await expect(runScheduler()).rejects.toThrow("Invalid live provider configuration")
+
+    expect(mockChain.from).not.toHaveBeenCalled()
+    expect(mockChain.insert).not.toHaveBeenCalled()
+    expect(messagingMocks.sendMessages).not.toHaveBeenCalled()
+  })
+
   it("processes one company with two renewal stages using exact matching", async () => {
     mockResponseQueue.push(
       { data: [{ id: "c1", name: "Test Company" }], error: null },
@@ -97,9 +139,86 @@ describe("runScheduler", () => {
     expect(inserted.customer_record_id).toBe("cust1")
     expect(inserted.reminder_stage).toBe(14)
     expect(inserted.message_type).toBe("renewal")
-    expect(inserted.status).toBe("sent")
+    expect(inserted.status).toBe("pending")
     expect(inserted.message_body).toContain("Ahmed")
     expect(inserted.idempotency_key).toBe("scheduler:renewal:c1:cust1:14:2026-06-19")
+    expect(mockChain.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: "sent",
+      provider_message_id: "SM1",
+      delivery_status: "queued",
+      failure_reason: null,
+    }))
+  })
+
+  it("moves a claimed message to failed when the provider rejects it", async () => {
+    messagingMocks.sendMessages.mockResolvedValueOnce([
+      { success: false, error: "Twilio unavailable", deliveryStatus: "failed", mobile: "+968111" },
+    ])
+    mockResponseQueue.push(
+      { data: [{ id: "c1", name: "Failure Co" }], error: null },
+      { data: { reminder_days: [14], is_active: true }, error: null },
+      { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
+      { data: [{ id: "cust1", customer_name: "Ahmed", mobile_no: "+968111", policy_expiry_date: "2026-07-03" }], error: null },
+      { data: [], error: null },
+      { error: null },
+      { data: null, error: null },
+    )
+
+    const result = await runScheduler()
+
+    expect(result.renewalSent).toBe(0)
+    expect(result.errors).toEqual([expect.stringContaining("Twilio unavailable")])
+    expect(mockChain.insert).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", sent_at: null }))
+    expect(mockChain.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: "failed",
+      provider_message_id: null,
+      delivery_status: "failed",
+      failure_reason: "Twilio unavailable",
+      sent_at: null,
+    }))
+  })
+
+  it("fails closed when provider acceptance has no provider identifier", async () => {
+    messagingMocks.sendMessages.mockResolvedValueOnce([
+      { success: true, deliveryStatus: "queued", mobile: "+968111" },
+    ])
+    mockResponseQueue.push(
+      { data: [{ id: "c1", name: "Missing ID Co" }], error: null },
+      { data: { reminder_days: [14], is_active: true }, error: null },
+      { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
+      { data: [{ id: "cust1", customer_name: "Ahmed", mobile_no: "+968111", policy_expiry_date: "2026-07-03" }], error: null },
+      { data: [], error: null },
+      { error: null },
+      { data: null, error: null },
+    )
+
+    const result = await runScheduler()
+
+    expect(result.renewalSent).toBe(0)
+    expect(result.errors[0]).toContain("without returning an identifier")
+    expect(mockChain.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: "failed",
+      provider_message_id: null,
+      sent_at: null,
+    }))
+  })
+
+  it("does not report sent when the tenant-scoped pending finalize matches no row", async () => {
+    mockFinalizeQueue.push({ data: [], error: null })
+    mockResponseQueue.push(
+      { data: [{ id: "c1", name: "Finalize Co" }], error: null },
+      { data: { reminder_days: [14], is_active: true }, error: null },
+      { data: { body: "Renewal for {{customer_name}}", name: "Renewal" }, error: null },
+      { data: [{ id: "cust1", customer_name: "Ahmed", mobile_no: "+968111", policy_expiry_date: "2026-07-03" }], error: null },
+      { data: [], error: null },
+      { error: null },
+      { data: null, error: null },
+    )
+
+    const result = await runScheduler()
+
+    expect(result.renewalSent).toBe(0)
+    expect(result.errors[0]).toContain("claim finalization failed")
   })
 
   it("does not include customers from other stages (exact match proof)", async () => {
@@ -143,7 +262,7 @@ describe("runScheduler", () => {
     const inserted = mockChain.insert.mock.calls[0][0]
     expect(inserted.customer_record_id).toBe("b1")
     expect(inserted.message_type).toBe("birthday")
-    expect(inserted.status).toBe("sent")
+    expect(inserted.status).toBe("pending")
     expect(inserted.idempotency_key).toBe("scheduler:birthday:c1:b1:2026-06-19")
   })
 
@@ -245,6 +364,11 @@ describe("runScheduler", () => {
     expect(result.companiesProcessed).toBe(2)
     expect(result.renewalSent).toBe(2)
     expect(mockChain.insert).toHaveBeenCalledTimes(2)
+    expect(mockFinalizeChain.eq).toHaveBeenCalledWith("company_id", "c1")
+    expect(mockFinalizeChain.eq).toHaveBeenCalledWith("company_id", "c2")
+    expect(mockFinalizeChain.eq).toHaveBeenCalledWith("idempotency_key", "scheduler:renewal:c1:a1:14:2026-06-19")
+    expect(mockFinalizeChain.eq).toHaveBeenCalledWith("idempotency_key", "scheduler:renewal:c2:b1:14:2026-06-19")
+    expect(mockFinalizeChain.eq).toHaveBeenCalledWith("status", "pending")
   })
 })
 
@@ -400,6 +524,11 @@ describe("scheduler durable idempotency", () => {
     expect(keys).toContain("scheduler:renewal:c1:cust1:30:2026-06-19")
     expect(keys).toContain("scheduler:renewal:c1:cust2:30:2026-06-19")
     expect(new Set(keys).size).toBe(2)
+    expect(messagingMocks.sendMessages).toHaveBeenCalledTimes(1)
+    expect(messagingMocks.sendMessages).toHaveBeenCalledWith([
+      { mobile: "+968111", body: "Renewal for Ahmed" },
+      { mobile: "+968222", body: "Renewal for Bader" },
+    ])
   })
 
   it("a new Muscat business date creates a different idempotency identity", async () => {
@@ -460,6 +589,7 @@ describe("scheduler durable idempotency", () => {
     const keys = mockChain.insert.mock.calls.map((c: { 0: Record<string, unknown> }) => c[0].idempotency_key)
     expect(keys[0]).toBe("scheduler:renewal:c1:cust1:30:2026-06-19")
     expect(keys[1]).toBe("scheduler:renewal:c1:cust1:30:2026-06-19")
+    expect(messagingMocks.sendMessages).toHaveBeenCalledTimes(1)
   })
 })
 

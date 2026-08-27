@@ -1,6 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getMuscatBusinessDayBounds, type MuscatBusinessDayBounds } from "@/lib/dates/muscat-day"
 import { isBirthdayToday } from "@/lib/dates/birthday"
+import { getProvider } from "@/lib/messaging/provider"
+import { sendMessages } from "@/lib/messaging/send"
+import type { SendResult } from "@/lib/messaging/types"
 
 export type SchedulerResult = {
   companiesProcessed: number
@@ -51,6 +54,13 @@ type CustomerRecord = {
 
 type CompanyRow = { id: string; name: string }
 
+type ClaimedMessage = {
+  idempotencyKey: string
+  mobile: string
+  body: string
+  errorPrefix: string
+}
+
 // ─── Idempotency keys ────────────────────────────────────────
 
 function renewalIdempotencyKey(
@@ -98,9 +108,95 @@ async function tryClaim(
   throw error
 }
 
+function failureReason(sendResult: SendResult): string {
+  const reason = sendResult.error?.trim()
+    || (sendResult.success ? "Provider accepted the message without returning an identifier" : "Provider rejected the message")
+  return reason.slice(0, 500)
+}
+
+async function finalizeClaim(
+  supabase: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  idempotencyKey: string,
+  sendResult: SendResult,
+): Promise<boolean> {
+  const accepted = sendResult.success && Boolean(sendResult.providerMessageId)
+  const patch = accepted
+    ? {
+        status: "sent" as const,
+        provider_message_id: sendResult.providerMessageId,
+        delivery_status: sendResult.deliveryStatus ?? null,
+        failure_reason: null,
+        sent_at: new Date().toISOString(),
+      }
+    : {
+        status: "failed" as const,
+        provider_message_id: sendResult.providerMessageId ?? null,
+        delivery_status: sendResult.deliveryStatus ?? null,
+        failure_reason: failureReason(sendResult),
+        sent_at: null,
+      }
+
+  const { data, error } = await supabase
+    .from("messages")
+    .update(patch)
+    .eq("company_id", companyId)
+    .eq("idempotency_key", idempotencyKey)
+    .eq("status", "pending")
+    .select("id")
+
+  if (error) throw new Error(error.message)
+  if (!data || data.length !== 1) {
+    throw new Error("Expected exactly one tenant-scoped pending claim to be finalized")
+  }
+
+  return accepted
+}
+
+async function dispatchClaims(
+  supabase: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  claims: ClaimedMessage[],
+  onSent: () => void,
+  errors: string[],
+): Promise<void> {
+  if (claims.length === 0) return
+
+  let sendResults: SendResult[]
+  try {
+    sendResults = await sendMessages(claims.map(({ mobile, body }) => ({ mobile, body })))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Provider initialization failed"
+    sendResults = claims.map(() => ({ success: false, error: message }))
+  }
+
+  for (let index = 0; index < claims.length; index++) {
+    const claim = claims[index]
+    const sendResult = sendResults[index] ?? { success: false, error: "Provider returned no result" }
+
+    try {
+      const accepted = await finalizeClaim(supabase, companyId, claim.idempotencyKey, sendResult)
+      if (accepted) {
+        onSent()
+      } else {
+        errors.push(`${claim.errorPrefix}: ${failureReason(sendResult)}`)
+      }
+    } catch (err) {
+      const outcome = sendResult.success ? "accepted" : "rejected"
+      errors.push(
+        `${claim.errorPrefix}: Provider ${outcome} the message, but claim finalization failed: ${err instanceof Error ? err.message : "Update error"}`,
+      )
+    }
+  }
+}
+
 // ─── Main Scheduler ──────────────────────────────────────────
 
 export async function runScheduler(): Promise<SchedulerResult> {
+  // Validate the provider gates before any durable claim is created. In live
+  // mode this also guarantees C2's public HTTPS status callback is configured.
+  getProvider()
+
   const supabase = createAdminClient()
   const result: SchedulerResult = { companiesProcessed: 0, renewalSent: 0, birthdaySent: 0, errors: [] }
 
@@ -196,10 +292,11 @@ async function processRenewals(
 
     if (eligible.length === 0) continue
 
-    const now = new Date().toISOString()
+    const claims: ClaimedMessage[] = []
 
     for (const customer of eligible) {
       const key = renewalIdempotencyKey(company.id, customer.id, days, date)
+      const body = renderTemplate(template.body, customer, company.name, days)
 
       const row = {
         company_id: company.id,
@@ -207,19 +304,25 @@ async function processRenewals(
         message_type: "renewal" as const,
         recipient_mobile: customer.mobile_no,
         template_used: template.name,
-        message_body: renderTemplate(template.body, customer, company.name, days),
-        status: "sent" as const,
+        message_body: body,
+        status: "pending" as const,
         reminder_stage: days,
         provider_message_id: null,
+        delivery_status: null,
         failure_reason: null,
-        sent_at: now,
+        sent_at: null,
         idempotency_key: key,
       }
 
       try {
         const claimed = await tryClaim(supabase, row)
         if (claimed) {
-          result.renewalSent++
+          claims.push({
+            idempotencyKey: key,
+            mobile: customer.mobile_no,
+            body,
+            errorPrefix: `Company ${company.id} renewal stage ${days} customer ${customer.id}`,
+          })
         }
         // Not claimed → another Scheduler run already recorded this message; skip silently
       } catch (err) {
@@ -228,6 +331,8 @@ async function processRenewals(
         )
       }
     }
+
+    await dispatchClaims(supabase, company.id, claims, () => { result.renewalSent++ }, result.errors)
   }
 }
 
@@ -279,10 +384,11 @@ async function processBirthdays(
 
   if (eligible.length === 0) return
 
-  const now = new Date().toISOString()
+  const claims: ClaimedMessage[] = []
 
   for (const customer of eligible) {
     const key = birthdayIdempotencyKey(company.id, customer.id, date)
+    const body = renderTemplate(template.body, customer, company.name)
 
     const row = {
       company_id: company.id,
@@ -290,19 +396,25 @@ async function processBirthdays(
       message_type: "birthday" as const,
       recipient_mobile: customer.mobile_no,
       template_used: template.name,
-      message_body: renderTemplate(template.body, customer, company.name),
-      status: "sent" as const,
+      message_body: body,
+      status: "pending" as const,
       reminder_stage: null,
       provider_message_id: null,
+      delivery_status: null,
       failure_reason: null,
-      sent_at: now,
+      sent_at: null,
       idempotency_key: key,
     }
 
     try {
       const claimed = await tryClaim(supabase, row)
       if (claimed) {
-        result.birthdaySent++
+        claims.push({
+          idempotencyKey: key,
+          mobile: customer.mobile_no,
+          body,
+          errorPrefix: `Company ${company.id} birthday customer ${customer.id}`,
+        })
       }
     } catch (err) {
       result.errors.push(
@@ -310,4 +422,6 @@ async function processBirthdays(
       )
     }
   }
+
+  await dispatchClaims(supabase, company.id, claims, () => { result.birthdaySent++ }, result.errors)
 }
