@@ -1,6 +1,9 @@
+import type { DeliveryStatus } from "./status"
+
 export type SendResult = {
   success: boolean
   providerMessageId?: string
+  deliveryStatus?: DeliveryStatus
   error?: string
 }
 

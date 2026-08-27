@@ -83,7 +83,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 | `TWILIO_ACCOUNT_SID` | Twilio account SID | `[stored in .env.local]` |
 | `TWILIO_AUTH_TOKEN` | Twilio auth token | `[stored in .env.local]` |
 | `TWILIO_WHATSAPP_NUMBER` | Twilio WhatsApp sender number | `+14155238886` (sandbox) |
-| `SITE_URL` | Server-side URL for Twilio delivery callbacks | `http://localhost:3000` |
+| `SITE_URL` | Server-side URL for Twilio delivery callbacks; live mode requires public HTTPS | `https://app.example.com` |
 | `NEXT_PUBLIC_SITE_URL` | Frontend URL for password reset redirects | `http://localhost:3000` |
 | `CRON_SECRET` | Secret token for cron endpoint auth | `[random string, e.g. openssl rand -hex 32]` |
 | `MOCK_MODE` | Enable mock WhatsApp provider (MVP/testing only — no real messages sent) | `true` |
@@ -164,15 +164,16 @@ Each invocation:
 2. For each active company with enabled `reminder_settings`:
    - **Renewal reminders:** For each configured stage (e.g. 30, 14, 7 days before expiry), finds customers whose `policy_expiry_date` matches exactly `today + days` (Asia/Muscat local date). Excludes opted-out and invalid-number customers. Deduplicates against messages already sent today.
    - **Birthday greetings:** Finds customers whose `driver_dob` month/day matches today's month/day (Asia/Muscat local date). Excludes opted-out and invalid-number customers. Deduplicates against messages already sent today.
-3. Inserts messages into the `messages` table for all eligible customers.
+3. Atomically inserts a `pending` claim for each eligible message. Only the winner of the durable idempotency claim can call the provider.
+4. Sends winning claims in bounded batches, then conditionally finalizes each tenant-scoped claim as `sent` or `failed` with provider and delivery metadata.
 
 **Deduplication:** Scoped to the current Asia/Muscat local day. Old messages from previous days or years do not block today's run. Running the endpoint multiple times on the same day does not duplicate messages.
 
 **Missing template resilience:** If no template exists for a message type (renewal or birthday), that type is skipped for the company. The other type still processes. The scheduler does not crash.
 
-### MVP Note
+### Provider Safety
 
-Messages are inserted with `status = "sent"`, but **no real WhatsApp provider is called yet**. This validates the scheduling logic, deduplication, and data pipeline end-to-end. Provider integration is the next slice.
+`MOCK_MODE=true` remains the safe default and performs no network send. Live mode fails before creating claims unless `MOCK_MODE=false`, `WHATSAPP_LIVE_ENABLED=true`, valid Twilio credentials, and a public HTTPS `SITE_URL` are all present. Do not enable live WhatsApp without explicit production approval.
 
 ### Local Testing
 
@@ -199,6 +200,7 @@ After deployment, verify by running the endpoint manually once with `CRON_SECRET
 - Renewal reminders appear for customers whose policies expire according to the configured stages.
 - Birthday greetings appear for customers with today's birthday (Asia/Muscat local date).
 - No duplicate messages were created if the endpoint was called multiple times.
+- Accepted messages have provider IDs and truthful initial delivery states; provider failures are recorded as failed, never sent.
 
 ---
 

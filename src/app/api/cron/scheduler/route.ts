@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server"
+import { createHash, timingSafeEqual } from "node:crypto"
 import { runScheduler } from "@/lib/scheduler/run"
+
+function secretsMatch(provided: string, expected: string): boolean {
+  const providedDigest = createHash("sha256").update(provided, "utf8").digest()
+  const expectedDigest = createHash("sha256").update(expected, "utf8").digest()
+  return timingSafeEqual(providedDigest, expectedDigest)
+}
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET
@@ -13,7 +20,7 @@ export async function GET(request: Request) {
 
   const provided = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : cronHeader
 
-  if (!provided || provided !== secret) {
+  if (!provided || !secretsMatch(provided, secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

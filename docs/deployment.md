@@ -90,17 +90,15 @@ The `vercel.json` file configures a daily cron job:
 
 ## 5. CRON_SECRET Safety Warning
 
-> **Do not run the cron endpoint with a real CRON_SECRET on production data until the WhatsApp provider is connected and tested.**
+> **Do not enable live WhatsApp or invoke the scheduler against production recipients until provider configuration, sandbox behavior, and callback reachability are explicitly approved and tested.**
 
-The scheduler currently inserts messages with `status = "sent"` but **does not actually call the WhatsApp provider**. This means:
-- Messages appear as "sent" in message history
-- No WhatsApp message is delivered to the customer
-- Running the scheduler on real production data would create false "sent" records
+The scheduler now atomically claims messages as `pending`, calls the configured provider only for winning claims, and conditionally records `sent` or `failed` with provider metadata. `MOCK_MODE=true` still performs no real network send. Live mode fails closed unless both live gates, valid Twilio credentials, and a public HTTPS `SITE_URL` are configured.
 
 Only enable the cron job after:
-1. The WhatsApp provider call is integrated into the scheduler
-2. You have tested with a sandbox number
-3. You have confirmed end-to-end delivery
+1. Explicit approval to change production provider/environment settings
+2. Testing with an approved sandbox number
+3. End-to-end callback reachability and delivery-state verification
+4. Confirmation that no Vercel deployment-protection rule blocks the Twilio status callback
 
 ---
 
