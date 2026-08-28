@@ -7,6 +7,7 @@ import {
   confirmRenewal,
   previewBirthdays,
   confirmBirthdays,
+  retryFailedMessage,
 } from "./actions"
 import { getCurrentRole } from "../role-actions"
 import type { MessageRecord, PreviewResult, ConfirmResult } from "./actions"
@@ -54,7 +55,7 @@ export default function MessagesPage() {
         ))}
       </div>
 
-      {tab === "history" && <HistorySection />}
+      {tab === "history" && <HistorySection isAdmin={isAdmin} />}
       {tab === "renewal" && <RenewalSection />}
       {tab === "birthday" && <BirthdaySection />}
     </div>
@@ -86,7 +87,7 @@ function statusBadgeClass(status: string): string {
 
 const HISTORY_PAGE_SIZE = 50
 
-function HistorySection() {
+function HistorySection({ isAdmin }: { isAdmin: boolean }) {
   const [messages, setMessages] = useState<MessageRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -94,15 +95,18 @@ function HistorySection() {
   const [hasMore, setHasMore] = useState(false)
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [deliveryFilter, setDeliveryFilter] = useState("all")
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [retryingId, setRetryingId] = useState<string | null>(null)
+  const [retryNotice, setRetryNotice] = useState<string | null>(null)
 
   const fetch = useCallback(async () => {
     setLoading(true)
     setError(null)
     setPage(1)
     try {
-      const result = await getMessageHistory(typeFilter, statusFilter, 1)
+      const result = await getMessageHistory(typeFilter, statusFilter, 1, deliveryFilter)
       if (result.error) {
         setError(result.error)
         setMessages([])
@@ -116,7 +120,7 @@ function HistorySection() {
     } finally {
       setLoading(false)
     }
-  }, [typeFilter, statusFilter])
+  }, [typeFilter, statusFilter, deliveryFilter])
 
   useEffect(() => { fetch() }, [fetch])
 
@@ -124,7 +128,7 @@ function HistorySection() {
     setLoadingMore(true)
     try {
       const nextPage = page + 1
-      const result = await getMessageHistory(typeFilter, statusFilter, nextPage)
+      const result = await getMessageHistory(typeFilter, statusFilter, nextPage, deliveryFilter)
       if (result.error) {
         setError(result.error)
       } else {
@@ -143,8 +147,25 @@ function HistorySection() {
     setExpandedId((prev) => (prev === id ? null : id))
   }
 
+  async function retryMessage(id: string) {
+    setRetryingId(id)
+    setRetryNotice(null)
+    try {
+      const result = await retryFailedMessage(id)
+      setRetryNotice(result.success
+        ? `Retry attempt ${result.attempt} was accepted${result.mock ? " in mock mode" : ""}.`
+        : (result.error ?? "Retry failed"))
+      await fetch()
+    } catch {
+      setRetryNotice("Something went wrong while retrying. Check history before trying again.")
+    } finally {
+      setRetryingId(null)
+    }
+  }
+
   return (
     <div>
+      {retryNotice && <Notice variant="info" className="mb-4">{retryNotice}</Notice>}
       <div className="mb-4 flex flex-wrap gap-4">
         <select
           value={typeFilter}
@@ -162,10 +183,22 @@ function HistorySection() {
           className="rounded border px-3 py-2 text-sm"
         >
           <option value="all">All Status</option>
-          <option value="sent">Sent</option>
-          <option value="failed">Failed</option>
+          <option value="sent">Provider accepted</option>
+          <option value="failed">Dispatch failed</option>
           <option value="skipped">Skipped</option>
           <option value="pending">Pending</option>
+        </select>
+        <select
+          value={deliveryFilter}
+          onChange={(e) => setDeliveryFilter(e.target.value)}
+          className="rounded border px-3 py-2 text-sm"
+        >
+          <option value="all">All Delivery</option>
+          <option value="queued">Queued</option>
+          <option value="sent">Sent</option>
+          <option value="delivered">Delivered</option>
+          <option value="undelivered">Undelivered</option>
+          <option value="failed">Failed</option>
         </select>
       </div>
 
@@ -214,6 +247,9 @@ function HistorySection() {
                     message={m}
                     expanded={expandedId === m.id}
                     onToggle={() => toggleExpand(m.id)}
+                    canRetry={isAdmin && (m.status === "failed" || m.delivery_status === "failed" || m.delivery_status === "undelivered")}
+                    retrying={retryingId === m.id}
+                    onRetry={() => retryMessage(m.id)}
                   />
                 ))}
               </tbody>
@@ -237,7 +273,21 @@ function HistorySection() {
   )
 }
 
-function HistoryRow({ message: m, expanded, onToggle }: { message: MessageRecord; expanded: boolean; onToggle: () => void }) {
+function HistoryRow({
+  message: m,
+  expanded,
+  onToggle,
+  canRetry,
+  retrying,
+  onRetry,
+}: {
+  message: MessageRecord
+  expanded: boolean
+  onToggle: () => void
+  canRetry: boolean
+  retrying: boolean
+  onRetry: () => void
+}) {
   return (
     <>
       <tr
@@ -301,6 +351,20 @@ function HistoryRow({ message: m, expanded, onToggle }: { message: MessageRecord
                 <span className="mb-1 block text-xs font-medium text-gray-500 uppercase tracking-wider">Failure Reason</span>
                 <p className="text-sm text-red-600">{m.failure_reason ?? "-"}</p>
               </div>
+              {canRetry && (
+                <div className="sm:col-span-2">
+                  <Button
+                    variant="outline"
+                    disabled={retrying}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onRetry()
+                    }}
+                  >
+                    {retrying ? "Retrying..." : "Retry message"}
+                  </Button>
+                </div>
+              )}
             </div>
           </td>
         </tr>
@@ -415,7 +479,7 @@ function RenewalSection() {
       {result && (
         <Notice variant={result.success ? "success" : "error"} className="mt-4">
           {result.success
-            ? `${result.sent} renewal message(s) sent. ${result.skipped} skipped (already sent).`
+            ? `${result.sent} renewal message(s) sent. ${result.failed ?? 0} failed. ${result.skipped} skipped (already sent).`
             : result.error}
         </Notice>
       )}
@@ -511,7 +575,7 @@ function BirthdaySection() {
 
       {result && (
         <Notice variant={result.success ? "success" : "error"} className="mt-4">
-          {result.success ? `${result.sent} birthday message(s) sent.` : result.error}
+          {result.success ? `${result.sent} birthday message(s) sent. ${result.failed ?? 0} failed.` : result.error}
         </Notice>
       )}
     </div>

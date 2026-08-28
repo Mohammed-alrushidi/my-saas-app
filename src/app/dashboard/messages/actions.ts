@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getProfile } from "@/lib/supabase/queries"
 import { sendMessages } from "@/lib/messaging/send"
+import { getProvider } from "@/lib/messaging/provider"
 import { getMuscatBusinessDayBounds, muscatExpiryWindow } from "@/lib/dates/muscat-day"
 import { isBirthdayToday } from "@/lib/dates/birthday"
 
@@ -54,10 +55,17 @@ export type ConfirmResult = {
   success: boolean
   sent: number
   skipped: number
+  failed?: number
   error?: string
 }
 
 const HISTORY_PAGE_SIZE = 50
+const MESSAGE_STATUSES = new Set(["pending", "sent", "failed", "skipped"])
+const MESSAGE_TYPES = new Set(["renewal", "birthday", "broadcast"])
+const DELIVERY_FILTERS = new Set(["queued", "sent", "delivered", "undelivered", "failed"])
+const MAX_RETRY_ATTEMPTS = 3
+const RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000] as const
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // ─── History ────────────────────────────────────────────────
 
@@ -65,10 +73,20 @@ export async function getMessageHistory(
   messageType?: string,
   status?: string,
   page: number = 1,
+  deliveryStatus?: string,
 ): Promise<{ messages: MessageRecord[]; hasMore: boolean; error?: string }> {
   const supabase = await createClient()
   const profile = await getProfile()
   if (!profile?.company_id) return { messages: [], hasMore: false }
+  if (messageType && messageType !== "all" && !MESSAGE_TYPES.has(messageType)) {
+    return { messages: [], hasMore: false, error: "Invalid message type filter" }
+  }
+  if (status && status !== "all" && !MESSAGE_STATUSES.has(status)) {
+    return { messages: [], hasMore: false, error: "Invalid message status filter" }
+  }
+  if (deliveryStatus && deliveryStatus !== "all" && !DELIVERY_FILTERS.has(deliveryStatus)) {
+    return { messages: [], hasMore: false, error: "Invalid delivery status filter" }
+  }
 
   const fetchSize = HISTORY_PAGE_SIZE + 1
   const from = (page - 1) * HISTORY_PAGE_SIZE
@@ -86,6 +104,9 @@ export async function getMessageHistory(
   }
   if (status && status !== "all") {
     query = query.eq("status", status)
+  }
+  if (deliveryStatus && deliveryStatus !== "all") {
+    query = query.eq("delivery_status", deliveryStatus)
   }
 
   const { data, error: queryError } = await query
@@ -113,6 +134,151 @@ export async function getMessageHistory(
   }))
 
   return { messages, hasMore }
+}
+
+export type RetryMessageResult = {
+  success: boolean
+  error?: string
+  retryAfterSeconds?: number
+  attempt?: number
+  messageId?: string
+  mock?: boolean
+}
+
+export async function retryFailedMessage(messageId: string): Promise<RetryMessageResult> {
+  if (!UUID_RE.test(messageId)) return { success: false, error: "Invalid message identifier" }
+
+  const profile = await getProfile()
+  if (!profile?.company_id) return { success: false, error: "No company assigned" }
+  if (!profile.is_active) return { success: false, error: "Account is inactive" }
+  if (profile.role !== "company_admin") return { success: false, error: "Only admins can retry messages" }
+
+  const supabase = await createClient()
+  const { data: source, error: sourceError } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("id", messageId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle()
+
+  if (sourceError || !source) return { success: false, error: "Message not found" }
+  if (source.status !== "failed" && !["failed", "undelivered"].includes(source.delivery_status ?? "")) {
+    return { success: false, error: "Only failed or undelivered messages can be retried" }
+  }
+
+  const rootId = source.retry_of_message_id ?? source.id
+  const { data: priorAttempts, error: attemptsError } = await supabase
+    .from("messages")
+    .select("id, status, delivery_status, retry_attempt, created_at")
+    .eq("company_id", profile.company_id)
+    .eq("retry_of_message_id", rootId)
+    .order("retry_attempt", { ascending: false })
+    .limit(1)
+
+  if (attemptsError) return { success: false, error: "Failed to inspect retry history" }
+  const latest = priorAttempts?.[0] ?? null
+  if (latest && (latest.status === "pending" || latest.status === "sent")) {
+    return { success: false, error: latest.status === "pending" ? "A retry is already in progress" : "A retry already succeeded" }
+  }
+
+  const attempt = (latest?.retry_attempt ?? 0) + 1
+  if (attempt > MAX_RETRY_ATTEMPTS) return { success: false, error: "Maximum retry attempts reached" }
+
+  const previousCreatedAt = latest?.created_at ?? source.created_at
+  const retryNotBeforeMs = Date.parse(previousCreatedAt) + RETRY_BACKOFF_MS[attempt - 1]
+  const waitMs = retryNotBeforeMs - Date.now()
+  if (!Number.isFinite(retryNotBeforeMs) || waitMs > 0) {
+    return {
+      success: false,
+      error: "Retry backoff is still active",
+      retryAfterSeconds: Number.isFinite(waitMs) ? Math.max(1, Math.ceil(waitMs / 1000)) : undefined,
+    }
+  }
+
+  if (source.customer_record_id) {
+    const { data: customer } = await supabase
+      .from("customer_records")
+      .select("id, communication_status")
+      .eq("id", source.customer_record_id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle()
+    if (!customer || customer.communication_status !== "allowed") {
+      return { success: false, error: "Recipient is no longer eligible for messaging" }
+    }
+  }
+
+  const { data: optOut } = await supabase
+    .from("opt_outs")
+    .select("id")
+    .eq("company_id", profile.company_id)
+    .eq("mobile_no", source.recipient_mobile)
+    .maybeSingle()
+  if (optOut) return { success: false, error: "Recipient has opted out" }
+
+  // Validate the configured provider before claiming a retry. In production this
+  // fails closed; with MOCK_MODE=true it only creates the no-network provider.
+  try {
+    getProvider()
+  } catch {
+    return { success: false, error: "Messaging provider is not configured" }
+  }
+
+  const retryNotBefore = new Date(retryNotBeforeMs).toISOString()
+  const claim = {
+    company_id: profile.company_id,
+    customer_record_id: source.customer_record_id,
+    message_type: source.message_type,
+    recipient_mobile: source.recipient_mobile,
+    template_used: source.template_used,
+    message_body: source.message_body,
+    status: "pending",
+    reminder_stage: source.reminder_stage,
+    idempotency_key: `retry:${rootId}:${attempt}`,
+    retry_of_message_id: rootId,
+    retry_attempt: attempt,
+    retry_not_before: retryNotBefore,
+  }
+
+  const { data: claimed, error: claimError } = await supabase
+    .from("messages")
+    .insert(claim)
+    .select("id")
+    .single()
+
+  if (claimError) {
+    if (claimError.code === "23505") return { success: false, error: "This retry attempt was already claimed" }
+    return { success: false, error: "Failed to claim retry" }
+  }
+
+  const [sendResult] = await sendMessages([{ mobile: source.recipient_mobile, body: source.message_body }])
+  const now = new Date().toISOString()
+  const finalStatus = sendResult.success ? "sent" : "failed"
+  const { data: finalized, error: finalizeError } = await supabase
+    .from("messages")
+    .update({
+      status: finalStatus,
+      provider_message_id: sendResult.providerMessageId ?? null,
+      delivery_status: sendResult.deliveryStatus ?? null,
+      failure_reason: sendResult.success ? null : (sendResult.error ?? "Provider rejected the retry"),
+      sent_at: sendResult.success ? now : null,
+    })
+    .eq("id", claimed.id)
+    .eq("company_id", profile.company_id)
+    .eq("status", "pending")
+    .select("id")
+
+  if (finalizeError || !finalized || finalized.length !== 1) {
+    return { success: false, error: "Retry outcome is uncertain; check message history before trying again", attempt, messageId: claimed.id }
+  }
+
+  revalidatePath("/dashboard/messages")
+  return {
+    success: sendResult.success,
+    error: sendResult.success ? undefined : (sendResult.error ?? "Provider rejected the retry"),
+    attempt,
+    messageId: claimed.id,
+    mock: sendResult.providerMessageId?.startsWith("mock-") ?? false,
+  }
 }
 
 // ─── Renewal ────────────────────────────────────────────────
@@ -255,6 +421,7 @@ export async function confirmRenewal(days: number): Promise<ConfirmResult> {
     status: (results[i].success ? "sent" : "failed") as "sent" | "failed",
     reminder_stage: days,
     provider_message_id: results[i].providerMessageId ?? null,
+    delivery_status: results[i].deliveryStatus ?? null,
     failure_reason: results[i].error ?? null,
     sent_at: results[i].success ? now : null,
   }))
@@ -263,7 +430,12 @@ export async function confirmRenewal(days: number): Promise<ConfirmResult> {
   if (error) return { success: false, sent: 0, skipped: 0, error: error.message }
 
   revalidatePath("/dashboard/messages")
-  return { success: true, sent: messages.filter((m) => m.status === "sent").length, skipped: totalInRange - eligible.length }
+  return {
+    success: true,
+    sent: messages.filter((m) => m.status === "sent").length,
+    failed: messages.filter((m) => m.status === "failed").length,
+    skipped: totalInRange - eligible.length,
+  }
 }
 
 // ─── Birthday ───────────────────────────────────────────────
@@ -373,6 +545,7 @@ export async function confirmBirthdays(): Promise<ConfirmResult> {
     message_body: recipients[i].body,
     status: (results[i].success ? "sent" : "failed") as "sent" | "failed",
     provider_message_id: results[i].providerMessageId ?? null,
+    delivery_status: results[i].deliveryStatus ?? null,
     failure_reason: results[i].error ?? null,
     sent_at: results[i].success ? now : null,
   }))
@@ -381,7 +554,12 @@ export async function confirmBirthdays(): Promise<ConfirmResult> {
   if (error) return { success: false, sent: 0, skipped: 0, error: error.message }
 
   revalidatePath("/dashboard/messages")
-  return { success: true, sent: messages.filter((m) => m.status === "sent").length, skipped: customers.length - eligible.length }
+  return {
+    success: true,
+    sent: messages.filter((m) => m.status === "sent").length,
+    failed: messages.filter((m) => m.status === "failed").length,
+    skipped: customers.length - eligible.length,
+  }
 }
 
 // ─── Broadcast (selected-recipient flow lives in dashboard/broadcast) ───────
