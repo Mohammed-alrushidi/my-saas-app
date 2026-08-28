@@ -1,12 +1,15 @@
 ﻿"use server"
 
+import { revalidatePath } from "next/cache"
 import { getProfile } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/server"
 import { sendMessages } from "@/lib/messaging/send"
+import { getProvider } from "@/lib/messaging/provider"
 import { can, type ProfileLike } from "@/lib/supabase/permissions"
 import { createHash } from "crypto"
 
 const PAGE_SIZE = 50
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export type BroadcastRecipient = {
   id: string
@@ -20,6 +23,7 @@ export type ConfirmResult = {
   success: boolean
   sent: number
   skipped: number
+  failed?: number
   error?: string
   /** True when the WhatsApp provider is in mock/sandbox mode — no real message was sent. */
   mock?: boolean
@@ -29,12 +33,35 @@ export type ConfirmResult = {
   alreadySubmitted?: boolean
   /** True when the submission key was found but the payload hash did not match. */
   payloadMismatch?: boolean
+  /** Provider dispatch may have happened, but durable history/finalization did not complete. */
+  uncertain?: boolean
   /**
    * True when the existing submission has been "processing" longer than
    * STALE_PROCESSING_MS — it almost certainly never finished, so the UI
    * should offer recovery instead of asking the user to wait.
    */
   staleProcessing?: boolean
+}
+
+export type BroadcastDraftRecord = {
+  id: string
+  message_body: string
+  recipient_ids: string[]
+  status: "pending_review" | "approved" | "rejected" | "sending" | "sent" | "failed"
+  review_note: string | null
+  sent_count: number
+  failed_count: number
+  created_at: string
+  reviewed_at: string | null
+  sent_at: string | null
+  creator_name: string | null
+}
+
+export type DraftActionResult = {
+  success: boolean
+  error?: string
+  draftId?: string
+  sendResult?: ConfirmResult
 }
 
 /**
@@ -152,6 +179,184 @@ export async function getBroadcastRecipientsPaginated(
   return { recipients, hasMore }
 }
 
+function validRecipientIds(selectedIds: string[]): boolean {
+  return selectedIds.length > 0
+    && selectedIds.length <= 50
+    && new Set(selectedIds).size === selectedIds.length
+    && selectedIds.every((id) => UUID_RE.test(id))
+}
+
+export async function submitBroadcastDraft(body: string, selectedIds: string[]): Promise<DraftActionResult> {
+  const profile = await getProfile()
+  if (!profile?.company_id) return { success: false, error: "No company assigned" }
+  if (!profile.is_active) return { success: false, error: "Account is inactive" }
+  if (!await can(profile as ProfileLike, "broadcast:create")) {
+    return { success: false, error: "You don't have permission to prepare broadcasts" }
+  }
+
+  const trimmedBody = body.trim()
+  if (!trimmedBody || trimmedBody.length > 1600) return { success: false, error: "Message must be between 1 and 1600 characters" }
+  if (!validRecipientIds(selectedIds)) return { success: false, error: "Select between 1 and 50 valid recipients" }
+
+  const supabase = await createClient()
+  const { data: customers, error: customerError } = await supabase
+    .from("customer_records")
+    .select("id, communication_status")
+    .eq("company_id", profile.company_id)
+    .in("id", selectedIds)
+
+  if (customerError) return { success: false, error: "Failed to validate recipients" }
+  if (!customers || customers.length !== selectedIds.length) return { success: false, error: "One or more recipients do not belong to your company" }
+  if (customers.some((customer) => customer.communication_status !== "allowed")) {
+    return { success: false, error: "One or more recipients are no longer eligible" }
+  }
+
+  const { data: draft, error } = await supabase
+    .from("broadcast_drafts")
+    .insert({
+      company_id: profile.company_id,
+      created_by: profile.id,
+      message_body: trimmedBody,
+      recipient_ids: selectedIds,
+      status: "pending_review",
+    })
+    .select("id")
+    .single()
+
+  if (error || !draft) return { success: false, error: "Failed to submit broadcast for review" }
+  revalidatePath("/dashboard/broadcast")
+  return { success: true, draftId: draft.id }
+}
+
+export async function getBroadcastDrafts(): Promise<BroadcastDraftRecord[]> {
+  const profile = await getProfile()
+  if (!profile?.company_id || !profile.is_active) return []
+  if (!await can(profile as ProfileLike, "broadcast:create")) return []
+
+  const supabase = await createClient()
+  let query = supabase
+    .from("broadcast_drafts")
+    .select("id, message_body, recipient_ids, status, review_note, sent_count, failed_count, created_at, reviewed_at, sent_at, creator:profiles!broadcast_drafts_created_by_fkey(full_name)")
+    .eq("company_id", profile.company_id)
+    .order("created_at", { ascending: false })
+    .limit(50)
+
+  if (profile.role !== "company_admin") query = query.eq("created_by", profile.id)
+  const { data, error } = await query
+  if (error || !data) return []
+
+  return data.map((row) => {
+    const creator = Array.isArray(row.creator) ? row.creator[0] : row.creator
+    return {
+      id: row.id,
+      message_body: row.message_body,
+      recipient_ids: row.recipient_ids,
+      status: row.status,
+      review_note: row.review_note,
+      sent_count: row.sent_count,
+      failed_count: row.failed_count,
+      created_at: row.created_at,
+      reviewed_at: row.reviewed_at,
+      sent_at: row.sent_at,
+      creator_name: creator?.full_name ?? null,
+    }
+  })
+}
+
+export async function reviewBroadcastDraft(
+  draftId: string,
+  decision: "approve" | "reject",
+  reviewNote?: string,
+): Promise<DraftActionResult> {
+  if (!UUID_RE.test(draftId)) return { success: false, error: "Invalid draft identifier" }
+  const profile = await getProfile()
+  if (!profile?.company_id) return { success: false, error: "No company assigned" }
+  if (!profile.is_active) return { success: false, error: "Account is inactive" }
+  if (profile.role !== "company_admin") return { success: false, error: "Only admins can review broadcasts" }
+
+  const note = reviewNote?.trim() || null
+  if (note && note.length > 500) return { success: false, error: "Review note must be at most 500 characters" }
+  const now = new Date().toISOString()
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("broadcast_drafts")
+    .update({
+      status: decision === "approve" ? "approved" : "rejected",
+      reviewed_by: profile.id,
+      reviewed_at: now,
+      review_note: note,
+    })
+    .eq("id", draftId)
+    .eq("company_id", profile.company_id)
+    .eq("status", "pending_review")
+    .select("id")
+
+  if (error) return { success: false, error: "Failed to review broadcast" }
+  if (!data || data.length !== 1) return { success: false, error: "Draft is missing, belongs to another company, or was already reviewed" }
+  revalidatePath("/dashboard/broadcast")
+  return { success: true, draftId }
+}
+
+export async function sendApprovedBroadcastDraft(draftId: string): Promise<DraftActionResult> {
+  if (!UUID_RE.test(draftId)) return { success: false, error: "Invalid draft identifier" }
+  const profile = await getProfile()
+  if (!profile?.company_id) return { success: false, error: "No company assigned" }
+  if (!profile.is_active) return { success: false, error: "Account is inactive" }
+  if (profile.role !== "company_admin") return { success: false, error: "Only admins can send broadcasts" }
+
+  try {
+    getProvider()
+  } catch {
+    return { success: false, error: "Messaging provider is not configured" }
+  }
+  const supabase = await createClient()
+  const { data: claimed, error: claimError } = await supabase
+    .from("broadcast_drafts")
+    .update({ status: "sending", reviewed_by: profile.id })
+    .eq("id", draftId)
+    .eq("company_id", profile.company_id)
+    .eq("status", "approved")
+    .select("id, message_body, recipient_ids")
+    .maybeSingle()
+
+  if (claimError) return { success: false, error: "Failed to claim approved broadcast" }
+  if (!claimed) return { success: false, error: "Draft is missing, belongs to another company, or is no longer approved" }
+
+  const sendResult = await confirmBroadcastSelected(claimed.message_body, claimed.recipient_ids, claimed.id)
+  if (sendResult.uncertain || sendResult.submissionStatus === "uncertain" || sendResult.staleProcessing) {
+    return {
+      success: false,
+      error: "Broadcast outcome is uncertain; check message history before taking further action",
+      draftId,
+      sendResult,
+    }
+  }
+
+  const now = new Date().toISOString()
+  const hasFailures = (sendResult.failed ?? 0) > 0
+  const { data: finalized, error: finalizeError } = await supabase
+    .from("broadcast_drafts")
+    .update({
+      status: sendResult.success && !hasFailures ? "sent" : "failed",
+      reviewed_by: profile.id,
+      sent_at: sendResult.sent > 0 ? now : null,
+      sent_count: sendResult.sent,
+      failed_count: sendResult.failed ?? 0,
+      review_note: sendResult.success ? null : (sendResult.error ?? "Broadcast send failed"),
+    })
+    .eq("id", draftId)
+    .eq("company_id", profile.company_id)
+    .eq("status", "sending")
+    .select("id")
+
+  if (finalizeError || !finalized || finalized.length !== 1) {
+    return { success: false, error: "Broadcast outcome is recorded in message history, but draft finalization is uncertain", draftId, sendResult }
+  }
+
+  revalidatePath("/dashboard/broadcast")
+  return { success: sendResult.success, error: sendResult.error, draftId, sendResult }
+}
+
 export async function confirmBroadcastSelected(
   body: string,
   selectedIds: string[],
@@ -165,6 +370,7 @@ export async function confirmBroadcastSelected(
   try {
     const profile = await getProfile()
     if (!profile?.company_id) return { success: false, sent: 0, skipped: 0, error: "No company assigned" }
+    if (!profile.is_active) return { success: false, sent: 0, skipped: 0, error: "Account is inactive" }
     if (profile.role !== "company_admin") return { success: false, sent: 0, skipped: 0, error: "Only admins can send messages" }
 
     companyId = profile.company_id
@@ -178,9 +384,14 @@ export async function confirmBroadcastSelected(
     if (!submissionId || typeof submissionId !== "string" || submissionId.length > 64) {
       return { success: false, sent: 0, skipped: 0, error: "Invalid submission identifier" }
     }
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (!uuidRegex.test(submissionId)) {
+    if (!UUID_RE.test(submissionId)) {
       return { success: false, sent: 0, skipped: 0, error: "Invalid submission identifier format" }
+    }
+
+    try {
+      getProvider()
+    } catch {
+      return { success: false, sent: 0, skipped: 0, error: "Messaging provider is not configured" }
     }
 
     const { data: customers } = await supabase
@@ -192,6 +403,7 @@ export async function confirmBroadcastSelected(
     if (!customers || customers.length === 0) return { success: false, sent: 0, skipped: 0, error: "No matching customers found" }
 
     const allowedCustomers = customers.filter((c) => c.communication_status === "allowed")
+    const skippedCount = selectedIds.length - allowedCustomers.length
 
     if (allowedCustomers.length === 0) {
       return { success: false, sent: 0, skipped: 0, error: "No eligible recipients" }
@@ -219,7 +431,7 @@ export async function confirmBroadcastSelected(
       submission_key: submissionId,
       payload_hash: payloadHash,
       status: "processing",
-      recipient_count: allowedCustomers.length,
+      recipient_count: selectedIds.length,
       created_by: profile.id,
     }
 
@@ -247,6 +459,7 @@ export async function confirmBroadcastSelected(
             success: false,
             sent: existing.sent_count,
             skipped: existing.skipped_count,
+            failed: existing.failed_count,
             error: "Submission payload mismatch — request rejected",
             submissionStatus: existing.status,
             alreadySubmitted: true,
@@ -269,6 +482,7 @@ export async function confirmBroadcastSelected(
           success: existing.status === "completed",
           sent: existing.sent_count,
           skipped: existing.skipped_count,
+          failed: existing.failed_count,
           error: existingError,
           alreadySubmitted: true,
           submissionStatus: existing.status,
@@ -297,6 +511,7 @@ export async function confirmBroadcastSelected(
       message_body: recipients[i].body,
       status: (results[i].success ? "sent" : "failed") as "sent" | "failed",
       provider_message_id: results[i].providerMessageId ?? null,
+      delivery_status: results[i].deliveryStatus ?? null,
       failure_reason: results[i].error ?? null,
       sent_at: results[i].success ? now : null,
     }))
@@ -315,7 +530,7 @@ export async function confirmBroadcastSelected(
         ? " Its tracking state could not be updated; it will be flagged as stuck automatically."
         : ""
 
-      return { success: false, sent: 0, skipped: 0, error: `Failed to save message history — broadcast may have been sent.${trackingNote}`, mock: isMock }
+      return { success: false, sent: 0, skipped: skippedCount, error: `Failed to save message history — broadcast may have been sent.${trackingNote}`, mock: isMock, uncertain: true }
     }
 
     // 7. Calculate truthful counts
@@ -330,6 +545,7 @@ export async function confirmBroadcastSelected(
       status: "completed",
       sent_count: sentCount,
       failed_count: failedCount,
+      skipped_count: skippedCount,
       completed_at: now,
     })
 
@@ -338,13 +554,14 @@ export async function confirmBroadcastSelected(
       return {
         success: true,
         sent: sentCount,
-        skipped: 0,
+        failed: failedCount,
+        skipped: skippedCount,
         mock: isMock,
         error: "Messages were sent and message history is accurate, but recording the final broadcast status failed.",
       }
     }
 
-    return { success: true, sent: sentCount, skipped: 0, mock: isMock }
+    return { success: true, sent: sentCount, failed: failedCount, skipped: skippedCount, mock: isMock }
 
   } catch (e) {
     // If the claim was made but an unexpected error occurred, mark submission uncertain
@@ -362,6 +579,6 @@ export async function confirmBroadcastSelected(
 
     console.error("confirmBroadcastSelected error:", e)
     const message = e instanceof Error ? e.message : "Unexpected error"
-    return { success: false, sent: 0, skipped: 0, error: `${message}${stateNote}` }
+    return { success: false, sent: 0, skipped: 0, error: `${message}${stateNote}`, ...(claimSucceeded ? { uncertain: true } : {}) }
   }
 }

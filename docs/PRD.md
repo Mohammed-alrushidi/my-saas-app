@@ -325,6 +325,16 @@ Reply STOP to unsubscribe.
 - Later Twilio callbacks use the existing C2 non-regressing, duplicate-safe, terminal-state delivery-status transitions.
 - C3 does not add retries, resend UI, inbound `STOP`, live WhatsApp activation, environment changes, or database migrations.
 
+## 11B. Retry, Inbound STOP, and Broadcast Handoff (C4)
+
+- A Company Admin may retry a failed or provider-undelivered message at most three times. Retry rows remain immutable history entries, use a durable lineage/attempt claim, and apply backoff of 1 minute, 5 minutes, then 30 minutes.
+- A retry revalidates the active tenant, current customer eligibility, opt-out state, provider configuration, and the retry claim before any provider call. Duplicate or concurrent requests must not call the provider twice.
+- `POST /api/messaging/inbound` accepts only a correctly signed Twilio webhook. Exact case-insensitive `STOP` synchronizes the sender into every matching tenant's `opt_outs` row and changes matching customer records to `opted_out`; duplicates are safe and do not disclose tenant matches.
+- Opt-outs block future scheduler, manual, retry, and broadcast sends. Manual opt-out normalization preserves canonical E.164 values.
+- Staff with `broadcast:create` may submit an immutable message and recipient snapshot for review. A Company Admin in the same tenant may approve, reject, and send an approved draft. Conditional state transitions prevent duplicate review or send claims.
+- Message history separates dispatch status from provider delivery status and reports failed counts truthfully.
+- `MOCK_MODE=true` remains the no-network default. C4 does not change Twilio, Vercel, environment variables, secrets, production data, or live WhatsApp activation.
+
 ## 12. Definition of Done
 The MVP is complete when:
 - Super Admin can create and manage companies

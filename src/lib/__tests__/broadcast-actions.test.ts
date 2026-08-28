@@ -69,6 +69,10 @@ vi.mock("@/lib/messaging/send", () => ({
   sendMessages: (...args: any[]) => mockSendMessages(...args),
 }))
 
+vi.mock("@/lib/messaging/provider", () => ({
+  getProvider: vi.fn(() => ({ name: "mock" })),
+}))
+
 import {
   loadBroadcastTemplate,
   getBroadcastRecipientsPaginated,

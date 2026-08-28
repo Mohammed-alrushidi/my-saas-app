@@ -5,12 +5,15 @@ import { createClient } from "@/lib/supabase/server"
 import { getProfile, getOptOuts } from "@/lib/supabase/queries"
 
 function cleanMobile(raw: string): string {
-  return raw.replace(/[\s\-\(\)\+]/g, "")
+  let cleaned = raw.trim().replace(/[\s\-\(\)]/g, "")
+  if (cleaned.startsWith("00")) cleaned = `+${cleaned.slice(2)}`
+  if (cleaned.startsWith("+")) return cleaned
+  if (cleaned.startsWith("968")) return `+${cleaned}`
+  return `+968${cleaned}`
 }
 
 function isValidMobile(mobile: string): boolean {
-  const cleaned = mobile.replace(/[\s\-\(\)\+]/g, "")
-  return /^\d{7,15}$/.test(cleaned)
+  return /^\+[1-9]\d{7,14}$/.test(mobile)
 }
 
 export type OptOutData = {

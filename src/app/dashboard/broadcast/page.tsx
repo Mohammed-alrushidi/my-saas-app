@@ -3,9 +3,17 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { loadBroadcastTemplate, getBroadcastRecipientsPaginated, confirmBroadcastSelected } from "./actions"
+import {
+  loadBroadcastTemplate,
+  getBroadcastRecipientsPaginated,
+  confirmBroadcastSelected,
+  getBroadcastDrafts,
+  submitBroadcastDraft,
+  reviewBroadcastDraft,
+  sendApprovedBroadcastDraft,
+} from "./actions"
 import { getDashboardCapabilities } from "../role-actions"
-import type { BroadcastRecipient, ConfirmResult } from "./actions"
+import type { BroadcastDraftRecord, BroadcastRecipient, ConfirmResult } from "./actions"
 import { Notice } from "@/components/ui/notice"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Search, Inbox } from "lucide-react"
@@ -65,6 +73,9 @@ export default function BroadcastPage() {
   const [canSend, setCanSend] = useState(false)
   const [role, setRole] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string>("")
+  const [drafts, setDrafts] = useState<BroadcastDraftRecord[]>([])
+  const [draftBusyId, setDraftBusyId] = useState<string | null>(null)
+  const [draftNotice, setDraftNotice] = useState<string | null>(null)
 
   // Submission idempotency state
   const [submissionId, setSubmissionId] = useState<string | null>(null)
@@ -91,6 +102,7 @@ export default function BroadcastPage() {
 
       if (caps.canPrepareBroadcast) {
         fetchRecipients("", 1, false)
+        refreshDrafts()
       } else {
         setRecipientsLoading(false)
       }
@@ -125,6 +137,14 @@ export default function BroadcastPage() {
       } else {
         setRecipientsLoading(false)
       }
+    }
+  }
+
+  async function refreshDrafts() {
+    try {
+      setDrafts(await getBroadcastDrafts())
+    } catch {
+      setDraftNotice("Failed to load broadcast drafts")
     }
   }
 
@@ -224,6 +244,55 @@ export default function BroadcastPage() {
     }
   }
 
+  async function handleSubmitForReview() {
+    if (!readyToSend) return
+    setDraftBusyId("new")
+    setDraftNotice(null)
+    try {
+      const response = await submitBroadcastDraft(body, Array.from(selectedIds))
+      if (!response.success) {
+        setDraftNotice(response.error ?? "Failed to submit draft")
+        return
+      }
+      setDraftNotice("Broadcast submitted for Company Admin review.")
+      await refreshDrafts()
+    } catch {
+      setDraftNotice("Failed to submit broadcast draft")
+    } finally {
+      setDraftBusyId(null)
+    }
+  }
+
+  async function handleDraftReview(draftId: string, decision: "approve" | "reject") {
+    setDraftBusyId(draftId)
+    setDraftNotice(null)
+    try {
+      const response = await reviewBroadcastDraft(draftId, decision)
+      setDraftNotice(response.success ? `Broadcast ${decision === "approve" ? "approved" : "rejected"}.` : (response.error ?? "Review failed"))
+      await refreshDrafts()
+    } catch {
+      setDraftNotice("Failed to review broadcast draft")
+    } finally {
+      setDraftBusyId(null)
+    }
+  }
+
+  async function handleDraftSend(draftId: string) {
+    setDraftBusyId(draftId)
+    setDraftNotice(null)
+    try {
+      const response = await sendApprovedBroadcastDraft(draftId)
+      setDraftNotice(response.success
+        ? `Approved broadcast complete: ${response.sendResult?.sent ?? 0} sent, ${response.sendResult?.failed ?? 0} failed.`
+        : (response.error ?? "Broadcast send failed"))
+      await refreshDrafts()
+    } catch {
+      setDraftNotice("Failed to send approved broadcast")
+    } finally {
+      setDraftBusyId(null)
+    }
+  }
+
   const readyToSend = body.trim() && selectedCount > 0 && !overLimit && !sending
 
   // Submission ID is managed via sessionStorage keyed by payload fingerprint.
@@ -244,6 +313,44 @@ export default function BroadcastPage() {
       {error && (
         <Notice variant="error" className="mb-4">{error}</Notice>
       )}
+      {draftNotice && (
+        <Notice variant="info" className="mb-4">{draftNotice}</Notice>
+      )}
+
+      {canPrepare && drafts.length > 0 && (
+        <div className="mb-6 rounded-lg border bg-card p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold">Broadcast review queue</h2>
+          <div className="space-y-3">
+            {drafts.map((draft) => (
+              <div key={draft.id} className="rounded border p-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="font-medium">{draft.creator_name ?? "Staff member"}</span>
+                    <span className="ml-2 text-xs text-gray-500">{draft.recipient_ids.length} recipients</span>
+                  </div>
+                  <span className="rounded bg-gray-100 px-2 py-1 text-xs">{draft.status.replace("_", " ")}</span>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-gray-700">{draft.message_body}</p>
+                {(draft.status === "sent" || draft.status === "failed") && (
+                  <p className="mt-2 text-xs text-gray-600">{draft.sent_count} sent · {draft.failed_count} failed</p>
+                )}
+                {draft.review_note && <p className="mt-2 text-xs text-red-600">{draft.review_note}</p>}
+                {canSend && draft.status === "pending_review" && (
+                  <div className="mt-3 flex gap-2">
+                    <Button size="sm" disabled={draftBusyId === draft.id} onClick={() => handleDraftReview(draft.id, "approve")}>Approve</Button>
+                    <Button variant="outline" size="sm" disabled={draftBusyId === draft.id} onClick={() => handleDraftReview(draft.id, "reject")}>Reject</Button>
+                  </div>
+                )}
+                {canSend && draft.status === "approved" && (
+                  <Button className="mt-3" size="sm" disabled={draftBusyId === draft.id} onClick={() => handleDraftSend(draft.id)}>
+                    {draftBusyId === draft.id ? "Sending..." : "Send approved broadcast"}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!canPrepare && role !== "company_admin" ? (
         <Notice variant="warning">
@@ -257,6 +364,7 @@ export default function BroadcastPage() {
               <div className="mb-2 text-lg font-semibold text-green-800">Broadcast complete</div>
               <div className="space-y-1 text-sm text-green-700">
                 <p>{result.sent} message(s) sent successfully.</p>
+                <p>{result.failed ?? 0} message(s) failed.</p>
                 {result.error && <p className="text-red-600">Errors: {result.error}</p>}
                 {result.mock && (
                   <p className="mt-1 text-xs text-amber-600">Mock send only — no WhatsApp message was sent.</p>
@@ -599,9 +707,16 @@ export default function BroadcastPage() {
                       : `Send to ${selectedCount} recipient${selectedCount !== 1 ? "s" : ""}`}
                   </Button>
                 ) : (
-                  <p className="mt-3 text-xs text-amber-600">
-                    Only company admins can send broadcast messages. You can prepare the broadcast, but an admin must send it.
-                  </p>
+                  <div className="mt-3">
+                    <Button
+                      onClick={handleSubmitForReview}
+                      disabled={!readyToSend || draftBusyId === "new"}
+                      className="w-full"
+                    >
+                      {draftBusyId === "new" ? "Submitting..." : "Submit for admin review"}
+                    </Button>
+                    <p className="mt-2 text-xs text-amber-600">Only a Company Admin can approve and send this broadcast.</p>
+                  </div>
                 )}
                 {templateBody && body === templateBody && (
                   <p className="mt-2 text-xs text-green-600">Using saved template</p>
