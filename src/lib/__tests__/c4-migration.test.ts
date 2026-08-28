@@ -20,6 +20,7 @@ describe("C4 migration invariants", () => {
   })
 
   it("enables RLS and separates creator and admin capabilities", () => {
+    expect(sql).toMatch(/default extensions\.uuid_generate_v4\(\)/i)
     expect(sql).toMatch(/alter table public\.broadcast_drafts enable row level security/i)
     expect(sql).toMatch(/creator_insert_broadcast_drafts/i)
     expect(sql).toMatch(/staff_permission_grants/i)

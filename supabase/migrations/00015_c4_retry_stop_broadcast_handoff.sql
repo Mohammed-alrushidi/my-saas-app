@@ -67,7 +67,7 @@ create index if not exists idx_messages_retry_lineage
 -- transitions are conditional in application code; RLS confines every row to
 -- the caller's tenant and prevents staff from reviewing or sending.
 create table if not exists public.broadcast_drafts (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default extensions.uuid_generate_v4(),
   company_id uuid not null references public.companies(id) on delete cascade,
   created_by uuid not null references public.profiles(id) on delete restrict,
   message_body text not null check (char_length(btrim(message_body)) between 1 and 1600),
