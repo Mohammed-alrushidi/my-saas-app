@@ -34,7 +34,7 @@ function makeXlsx(data: Record<string, unknown>[]): Buffer {
 
 function makeFormData(rows: Record<string, unknown>[]): FormData {
   const buffer = makeXlsx(rows)
-  const blob = new Blob([buffer], {
+  const blob = new Blob([Uint8Array.from(buffer)], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   })
   const file = new File([blob], "test.xlsx")

@@ -44,14 +44,20 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(() => mockAdminClient),
 }))
 
-const mockGetProfile = vi.fn(() => ({
+type MockProfile = {
+  id: string
+  company_id: string | null
+  role: string
+}
+
+const mockGetProfile = vi.fn<() => MockProfile | null>(() => ({
   id: "test-user-id",
   company_id: null,
   role: "super_admin",
 }))
 
 vi.mock("@/lib/supabase/queries", () => ({
-  getProfile: (...args: any[]) => mockGetProfile(...args),
+  getProfile: () => mockGetProfile(),
 }))
 
 beforeEach(() => {

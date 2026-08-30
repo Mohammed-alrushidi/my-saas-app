@@ -1,5 +1,7 @@
 ﻿import { describe, it, expect, vi, beforeEach } from "vitest"
 
+import type { SendResult } from "@/lib/messaging/types"
+
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
 let mockResolveValue: any = { data: null, error: null }
@@ -49,7 +51,15 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(() => mockChain),
 }))
 
-const mockGetProfile = vi.fn(() => ({
+type MockProfile = {
+  id: string
+  company_id: string | null
+  role: string
+  is_active: boolean
+  companies: { id?: string; name: string } | null
+}
+
+const mockGetProfile = vi.fn<() => MockProfile | null>(() => ({
   id: "test-user-id",
   company_id: "test-company-id",
   role: "company_admin",
@@ -58,15 +68,19 @@ const mockGetProfile = vi.fn(() => ({
 }))
 
 vi.mock("@/lib/supabase/queries", () => ({
-  getProfile: (...args: any[]) => mockGetProfile(...args),
+  getProfile: () => mockGetProfile(),
 }))
 
-const mockSendMessages = vi.fn((recipients: any[]) =>
+type MockRecipient = { mobile: string; body: string }
+
+const mockSendMessages = vi.fn<
+  (recipients: MockRecipient[]) => Promise<SendResult[]>
+>(async (recipients) =>
   recipients.map(() => ({ success: true, providerMessageId: "mock-sid" })),
 )
 
 vi.mock("@/lib/messaging/send", () => ({
-  sendMessages: (...args: any[]) => mockSendMessages(...args),
+  sendMessages: (recipients: MockRecipient[]) => mockSendMessages(recipients),
 }))
 
 vi.mock("@/lib/messaging/provider", () => ({
@@ -770,8 +784,8 @@ describe("confirmBroadcastSelected", () => {
     })
 
     // Hold sendMessages so the first call blocks mid-flight
-    let sendResolve: (v: any) => void
-    const sendDeferred = new Promise<any>((resolve) => { sendResolve = resolve })
+    let sendResolve: (value: SendResult[]) => void
+    const sendDeferred = new Promise<SendResult[]>((resolve) => { sendResolve = resolve })
     mockSendMessages.mockImplementationOnce(() => sendDeferred)
 
     // Set up duplicate lookup response
@@ -835,8 +849,8 @@ describe("confirmBroadcastSelected", () => {
       return Promise.resolve({ error: null })
     })
 
-    let sendResolve: (v: any) => void
-    const sendDeferred = new Promise<any>((resolve) => { sendResolve = resolve })
+    let sendResolve: (value: SendResult[]) => void
+    const sendDeferred = new Promise<SendResult[]>((resolve) => { sendResolve = resolve })
     mockSendMessages.mockImplementationOnce(() => sendDeferred)
 
     mockSingleReturn = {

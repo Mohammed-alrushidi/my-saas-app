@@ -22,13 +22,20 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(() => mockChain),
 }))
 
-const companyAdmin = { id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true }
-const staffProfile = { id: "staff-id", company_id: "company-a", role: "staff", is_active: true }
+type MockProfile = {
+  id: string
+  company_id: string | null
+  role: string
+  is_active: boolean
+}
 
-const mockGetProfile = vi.fn(() => companyAdmin)
+const companyAdmin: MockProfile = { id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true }
+const staffProfile: MockProfile = { id: "staff-id", company_id: "company-a", role: "staff", is_active: true }
+
+const mockGetProfile = vi.fn<() => MockProfile>(() => companyAdmin)
 
 vi.mock("@/lib/supabase/queries", () => ({
-  getProfile: (...args: any[]) => mockGetProfile(...args),
+  getProfile: () => mockGetProfile(),
   getReminderSettings: vi.fn(),
 }))
 

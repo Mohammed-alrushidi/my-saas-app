@@ -47,15 +47,17 @@ const mockGetProfile = vi.fn(() => ({
 }))
 
 vi.mock("@/lib/supabase/queries", () => ({
-  getProfile: (...args: any[]) => mockGetProfile(...args),
+  getProfile: () => mockGetProfile(),
 }))
 
-const mockSendMessages = vi.fn((recipients: any[]) =>
+type MockRecipient = { mobile: string; body: string }
+
+const mockSendMessages = vi.fn((recipients: MockRecipient[]) =>
   recipients.map(() => ({ success: true, providerMessageId: "mock-sid" })),
 )
 
 vi.mock("@/lib/messaging/send", () => ({
-  sendMessages: (...args: any[]) => mockSendMessages(...args),
+  sendMessages: (recipients: MockRecipient[]) => mockSendMessages(recipients),
 }))
 
 beforeEach(() => {
@@ -690,15 +692,15 @@ describe("confirmBirthdays", () => {
       const recipients = mockSendMessages.mock.calls[0][0]
       expect(recipients).toHaveLength(2)
 
-      const ahmedR = recipients.find((r: any) => r.mobile === "+96891111111")
+      const ahmedR = recipients.find((recipient) => recipient.mobile === "+96891111111")
       expect(ahmedR).toBeDefined()
-      expect(ahmedR.body).toContain("Ahmed")
-      expect(ahmedR.body).toContain("Test Company")
+      expect(ahmedR?.body).toContain("Ahmed")
+      expect(ahmedR?.body).toContain("Test Company")
 
-      const fatimaR = recipients.find((r: any) => r.mobile === "+96892222222")
+      const fatimaR = recipients.find((recipient) => recipient.mobile === "+96892222222")
       expect(fatimaR).toBeDefined()
-      expect(fatimaR.body).toContain("Fatima")
-      expect(fatimaR.body).toContain("Test Company")
+      expect(fatimaR?.body).toContain("Fatima")
+      expect(fatimaR?.body).toContain("Test Company")
 
       expect(revalidatePath).toHaveBeenCalledWith("/dashboard/messages")
 
