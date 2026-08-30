@@ -18,7 +18,14 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(() => mockChain),
 }))
 
-const mockGetProfile = vi.fn(() => ({
+type MockProfile = {
+  id: string
+  company_id: string | null
+  role: string
+  is_active: boolean
+}
+
+const mockGetProfile = vi.fn<() => MockProfile | null>(() => ({
   id: "staff-id",
   company_id: "company-a",
   role: "staff",
@@ -26,7 +33,7 @@ const mockGetProfile = vi.fn(() => ({
 }))
 
 vi.mock("@/lib/supabase/queries", () => ({
-  getProfile: (...args: any[]) => mockGetProfile(...args),
+  getProfile: () => mockGetProfile(),
 }))
 
 import { can, COMPANY_PERMISSIONS } from "@/lib/supabase/permissions"

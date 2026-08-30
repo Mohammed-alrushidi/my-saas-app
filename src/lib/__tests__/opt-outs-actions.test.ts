@@ -16,7 +16,7 @@ const mockGetProfile = vi.fn(() => ({
 }))
 
 vi.mock("@/lib/supabase/queries", () => ({
-  getProfile: (...args: any[]) => mockGetProfile(...args),
+  getProfile: () => mockGetProfile(),
   getOptOuts: vi.fn(),
 }))
 

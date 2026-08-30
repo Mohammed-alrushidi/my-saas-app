@@ -487,7 +487,9 @@ describe("scheduler durable idempotency", () => {
 
     const insertCalls = mockChain.insert.mock.calls
     expect(insertCalls).toHaveLength(2)
-    const keys = insertCalls.map((c: { 0: Record<string, unknown> }) => c[0].idempotency_key)
+    const keys = insertCalls.map(
+      ([row]) => (row as Record<string, unknown>).idempotency_key,
+    )
     expect(keys).toContain("scheduler:renewal:c1:cust1:14:2026-06-19")
     expect(keys).toContain("scheduler:renewal:c1:cust1:30:2026-06-19")
     expect(new Set(keys).size).toBe(2)
@@ -520,7 +522,9 @@ describe("scheduler durable idempotency", () => {
 
     const insertCalls = mockChain.insert.mock.calls
     expect(insertCalls).toHaveLength(2)
-    const keys = insertCalls.map((c: { 0: Record<string, unknown> }) => c[0].idempotency_key)
+    const keys = insertCalls.map(
+      ([row]) => (row as Record<string, unknown>).idempotency_key,
+    )
     expect(keys).toContain("scheduler:renewal:c1:cust1:30:2026-06-19")
     expect(keys).toContain("scheduler:renewal:c1:cust2:30:2026-06-19")
     expect(new Set(keys).size).toBe(2)
@@ -586,7 +590,9 @@ describe("scheduler durable idempotency", () => {
     await runScheduler()
 
     expect(mockChain.insert).toHaveBeenCalledTimes(2)
-    const keys = mockChain.insert.mock.calls.map((c: { 0: Record<string, unknown> }) => c[0].idempotency_key)
+    const keys = mockChain.insert.mock.calls.map(
+      ([row]) => (row as Record<string, unknown>).idempotency_key,
+    )
     expect(keys[0]).toBe("scheduler:renewal:c1:cust1:30:2026-06-19")
     expect(keys[1]).toBe("scheduler:renewal:c1:cust1:30:2026-06-19")
     expect(messagingMocks.sendMessages).toHaveBeenCalledTimes(1)
