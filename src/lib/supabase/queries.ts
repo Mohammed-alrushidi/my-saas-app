@@ -2,9 +2,19 @@ import { createClient } from "@/lib/supabase/server"
 import {
   getMuscatBusinessDayBounds,
   muscatExpiryWindow,
-  muscatMonthPattern,
+  muscatMonthDayRange,
 } from "@/lib/dates/muscat-day"
 import { isBirthdayToday } from "@/lib/dates/birthday"
+
+type BirthdayRecord = {
+  id: string
+  customer_name: string
+  policy_no: string
+  mobile_no: string
+  driver_dob: string | null
+  driver_birth_mmdd: number | null
+  [key: string]: unknown
+}
 
 export async function getProfile() {
   const supabase = await createClient()
@@ -159,20 +169,27 @@ export async function getBirthdaysThisMonth(now: Date = new Date()) {
   const profile = await getProfile()
   if (!profile?.company_id) return []
 
-  // SQL-side month match (any birth year) — the previous client-side filter
-  // after a limit(50) silently truncated the month list on larger datasets.
-  const pattern = muscatMonthPattern(now)
+  const { start, end } = muscatMonthDayRange(now)
+  const pageSize = 1000
+  const records: BirthdayRecord[] = []
 
-  const { data } = await supabase
-    .from("customer_records")
-    .select("*")
-    .eq("company_id", profile.company_id)
-    .not("driver_dob", "is", null)
-    .like("driver_dob", pattern)
-    .order("driver_dob", { ascending: true })
-    .limit(50)
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("customer_records")
+      .select("*")
+      .eq("company_id", profile.company_id)
+      .gte("driver_birth_mmdd", start)
+      .lte("driver_birth_mmdd", end)
+      .order("driver_birth_mmdd", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1)
 
-  return data ?? []
+    if (error) throw new Error("Failed to load birthdays")
+    records.push(...(data ?? []))
+    if (!data || data.length < pageSize) break
+  }
+
+  return records
 }
 
 export async function getReminderSettings() {

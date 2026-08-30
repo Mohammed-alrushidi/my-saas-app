@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { addDaysIso, getMuscatBusinessDayBounds, muscatExpiryWindow, muscatMonthPattern } from "@/lib/dates/muscat-day"
+import { addDaysIso, getMuscatBusinessDayBounds, muscatExpiryWindow, muscatMonthDayRange } from "@/lib/dates/muscat-day"
 
 describe("getMuscatBusinessDayBounds", () => {
   it("returns a normal Muscat business day for a fixed UTC morning", () => {
@@ -92,12 +92,12 @@ describe("muscatExpiryWindow", () => {
   })
 })
 
-describe("muscatMonthPattern", () => {
-  it("builds a PostgREST like-pattern from the Muscat month", () => {
-    expect(muscatMonthPattern(new Date("2025-06-15T12:00:00Z"))).toBe("____-06-__")
+describe("muscatMonthDayRange", () => {
+  it("builds numeric MMDD bounds from the Muscat month", () => {
+    expect(muscatMonthDayRange(new Date("2025-06-15T12:00:00Z"))).toEqual({ start: 601, end: 631 })
   })
   it("uses the Muscat month after midnight rollover", () => {
     // 2025-07-31 20:30 UTC = 2025-08-01 in Muscat
-    expect(muscatMonthPattern(new Date("2025-07-31T20:30:00Z"))).toBe("____-08-__")
+    expect(muscatMonthDayRange(new Date("2025-07-31T20:30:00Z"))).toEqual({ start: 801, end: 831 })
   })
 })

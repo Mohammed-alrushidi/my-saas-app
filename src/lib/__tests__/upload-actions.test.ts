@@ -143,6 +143,34 @@ describe("confirmImport", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/dashboard")
   })
 
+  it("normalizes a zero-padded day-first birthday", async () => {
+    const row = {
+      "Policy No": "POL-DOB-001",
+      "Quotation No": "Q-DOB-001",
+      "Customer Name": "Birthday Customer",
+      "Mobile No": "91234567",
+      "Policy Expiry Date": "31/12/2026",
+      "Veh Make Model": "Toyota Camry",
+      "Driver Age": 38,
+      "Driver DOB": "30/08/1988",
+      "New Premium + VAT Amount": 500,
+    }
+
+    mockResponseQueue.push(
+      { data: [], error: null },
+      { data: [], error: null },
+      { data: { id: "import-dob", company_id: "test-company-id" }, error: null },
+      { error: null },
+    )
+
+    const result = await confirmImport(makeFormData([row]))
+
+    expect(result.success).toBe(true)
+    const customerInsertBuilder = mockChain.from.mock.results.at(-1)!.value
+    const inserted = customerInsertBuilder.insert.mock.calls[0][0]
+    expect(inserted[0].driver_dob).toBe("1988-08-30")
+  })
+
   it("handles duplicate policy number from existing DB records", async () => {
     const row = {
       "Policy No": "POL001",

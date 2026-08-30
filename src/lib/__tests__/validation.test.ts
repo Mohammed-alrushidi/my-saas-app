@@ -149,7 +149,7 @@ describe("parseExcel validation", () => {
       const result = await parseExcel(makeFormData([row]))
       if ("error" in result) return
       expect(result.preview.validRows).toBe(0)
-      expect(result.preview.errors.some((e) => e.message === "Invalid date")).toBe(true)
+      expect(result.preview.errors.some((e) => e.message.startsWith("Invalid date"))).toBe(true)
     })
   })
 

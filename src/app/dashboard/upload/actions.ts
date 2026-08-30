@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getProfile } from "@/lib/supabase/queries"
+import { parseSpreadsheetDate } from "@/lib/dates/spreadsheet-date"
 
 import * as XLSX from "xlsx"
 
@@ -61,34 +62,6 @@ function findColumn(row: Record<string, unknown>, ...candidates: string[]): stri
     if (found) return found
   }
   return undefined
-}
-
-function parseExcelDate(value: unknown): Date | null {
-  if (value == null || value === "") return null
-  if (typeof value === "number") {
-    const epoch = new Date(Date.UTC(1899, 11, 30))
-    const d = new Date(epoch.getTime() + value * 86400000)
-    if (!isNaN(d.getTime())) return d
-  }
-  if (value instanceof Date && !isNaN(value.getTime())) return value
-  if (typeof value === "string") {
-    const ddmm = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-    if (ddmm) {
-      const d = new Date(`${ddmm[3]}-${ddmm[2].padStart(2, "0")}-${ddmm[1].padStart(2, "0")}`)
-      if (!isNaN(d.getTime())) return d
-    }
-    const d = new Date(value)
-    if (!isNaN(d.getTime())) return d
-    const num = parseFloat(value)
-    if (!isNaN(num) && num > 40000) {
-      return parseExcelDate(num)
-    }
-  }
-  return null
-}
-
-function formatDate(d: Date): string {
-  return d.toISOString().split("T")[0]
 }
 
 function isValidMobile(mobile: string): boolean {
@@ -167,28 +140,28 @@ function validateRow(
 
   const expiryCol = findColumn(row, "Policy Expiry Date")
   const expiryRaw = expiryCol ? row[expiryCol] : null
-  const expiryParsed = expiryRaw ? parseExcelDate(expiryRaw) : null
+  const expiryParsed = expiryRaw ? parseSpreadsheetDate(expiryRaw) : null
   let expiryDateStr = ""
   if (!expiryRaw || String(expiryRaw).trim() === "") {
     errors.push({ row: rowNum, field: "Policy Expiry Date", message: "Required" })
     rowValid = false
   } else if (!expiryParsed) {
-    errors.push({ row: rowNum, field: "Policy Expiry Date", message: "Invalid date" })
+    errors.push({ row: rowNum, field: "Policy Expiry Date", message: "Invalid date. Use DD/MM/YYYY or YYYY-MM-DD" })
     rowValid = false
   } else {
-    expiryDateStr = formatDate(expiryParsed)
+    expiryDateStr = expiryParsed
   }
 
   const dobCol = findColumn(row, "Driver DOB")
   const dobRaw = dobCol ? row[dobCol] : null
-  const dobParsed = dobRaw ? parseExcelDate(dobRaw) : null
+  const dobParsed = dobRaw ? parseSpreadsheetDate(dobRaw) : null
   let dobStr: string | null = null
   if (dobRaw && String(dobRaw).trim() !== "") {
     if (!dobParsed) {
-      errors.push({ row: rowNum, field: "Driver DOB", message: "Invalid date" })
+      errors.push({ row: rowNum, field: "Driver DOB", message: "Invalid date. Use DD/MM/YYYY or YYYY-MM-DD" })
       rowValid = false
     } else {
-      dobStr = formatDate(dobParsed)
+      dobStr = dobParsed
     }
   }
 
@@ -258,7 +231,7 @@ export async function parseExcel(formData: FormData): Promise<ParseResult> {
   if (!ext || !["xlsx", "xls"].includes(ext)) return { error: "File must be .xlsx or .xls" }
 
   const buffer = Buffer.from(await file.arrayBuffer())
-  const workbook = XLSX.read(buffer, { type: "buffer" })
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true })
   const sheetName = workbook.SheetNames[0]
   if (!sheetName) return { error: "Excel file is empty" }
 
@@ -365,7 +338,7 @@ export async function confirmImport(formData: FormData): Promise<{ success: bool
   const file = fileEntry as File
 
   const buffer = Buffer.from(await file.arrayBuffer())
-  const workbook = XLSX.read(buffer, { type: "buffer" })
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true })
   const sheetName = workbook.SheetNames[0]
   if (!sheetName) return { success: false, error: "Excel file is empty" }
 
