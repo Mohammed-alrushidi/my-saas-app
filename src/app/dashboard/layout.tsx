@@ -1,7 +1,8 @@
 import { getProfile } from "@/lib/supabase/queries"
 import { redirect } from "next/navigation"
 import { can, type ProfileLike } from "@/lib/supabase/permissions"
-import DashboardSidebar from "@/components/dashboard-sidebar"
+import DashboardShell from "@/components/dashboard-shell"
+import { getPendingPermissionSummary } from "./permissions/actions"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   let profile
@@ -21,17 +22,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   const canPrepareBroadcast = await can(profile as ProfileLike, "broadcast:create")
+  const initialPermissionSummary = profile.role === "company_admin"
+    ? await getPendingPermissionSummary()
+    : null
 
   return (
-    <div className="flex min-h-screen">
-      <DashboardSidebar
-        role={profile.role}
-        fullName={profile.full_name || profile.email || null}
-        companyName={(profile.companies as { name?: string } | null)?.name ?? null}
-        canPrepareBroadcast={canPrepareBroadcast}
-      />
-
-      <main className="min-w-0 flex-1">{children}</main>
-    </div>
+    <DashboardShell
+      role={profile.role}
+      fullName={profile.full_name || profile.email || null}
+      companyName={(profile.companies as { name?: string } | null)?.name ?? null}
+      canPrepareBroadcast={canPrepareBroadcast}
+      initialPermissionSummary={initialPermissionSummary}
+    >
+      {children}
+    </DashboardShell>
   )
 }

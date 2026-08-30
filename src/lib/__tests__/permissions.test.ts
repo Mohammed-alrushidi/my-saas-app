@@ -8,6 +8,7 @@ const mockChain: any = {
   from: vi.fn(() => mockChain),
   select: vi.fn(() => mockChain),
   eq: vi.fn(() => mockChain),
+  limit: vi.fn(() => mockChain),
   order: vi.fn(() => Promise.resolve({ data: [] })),
   insert: vi.fn(() => Promise.resolve({ error: null })),
   update: vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) })),
@@ -41,6 +42,7 @@ import {
   createPermissionRequest,
   getMyPermissionRequests,
   getCompanyPermissionRequests,
+  getPendingPermissionSummary,
   approvePermissionRequest,
   rejectPermissionRequest,
 } from "@/app/dashboard/permissions/actions"
@@ -357,6 +359,52 @@ describe("getCompanyPermissionRequests", () => {
     expect(result!.reviewed[0].id).toBe("2")
     expect(result!.reviewed[0].staff_name).toBe("Staff Two")
     expect(result!.reviewed[0].review_note).toBe("Looks good")
+  })
+})
+
+describe("getPendingPermissionSummary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockChain.limit = vi.fn(() => mockChain)
+    mockChain.order = vi.fn(() => Promise.resolve({ data: [], count: 0, error: null }))
+  })
+
+  it("returns null outside an active company admin session", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "staff-id", company_id: "company-a", role: "staff", is_active: true })
+    expect(await getPendingPermissionSummary()).toBeNull()
+  })
+
+  it("returns the tenant pending count and newest notification items", async () => {
+    mockGetProfile.mockReturnValueOnce({ id: "admin-id", company_id: "company-a", role: "company_admin", is_active: true })
+    mockChain.order = vi.fn(() => Promise.resolve({
+      data: [
+        {
+          id: "request-1",
+          permission: "templates:edit",
+          created_at: "2026-08-30T08:00:00Z",
+          staff: { full_name: "Ali" },
+        },
+      ],
+      count: 7,
+      error: null,
+    }))
+
+    const result = await getPendingPermissionSummary()
+
+    expect(result).toEqual({
+      count: 7,
+      items: [
+        {
+          id: "request-1",
+          permission: "templates:edit",
+          created_at: "2026-08-30T08:00:00Z",
+          staff_name: "Ali",
+        },
+      ],
+    })
+    expect(mockChain.eq).toHaveBeenCalledWith("company_id", "company-a")
+    expect(mockChain.eq).toHaveBeenCalledWith("status", "pending")
+    expect(mockChain.limit).toHaveBeenCalledWith(5)
   })
 })
 
