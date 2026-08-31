@@ -28,6 +28,7 @@ interface SidebarProps {
   fullName?: string | null
   companyName?: string | null
   canPrepareBroadcast?: boolean
+  pendingPermissionCount?: number
 }
 
 const NAV_ITEMS: {
@@ -50,7 +51,13 @@ const NAV_ITEMS: {
   { href: "/dashboard/permissions", label: "Permission Requests", icon: KeyRound },
 ]
 
-export default function DashboardSidebar({ role, fullName, companyName, canPrepareBroadcast }: SidebarProps) {
+export default function DashboardSidebar({
+  role,
+  fullName,
+  companyName,
+  canPrepareBroadcast,
+  pendingPermissionCount = 0,
+}: SidebarProps) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -134,6 +141,10 @@ export default function DashboardSidebar({ role, fullName, companyName, canPrepa
           {visibleItems.map((item) => {
             const active = isActive(item.href)
             const isAdminItem = item.adminOnly
+            const showPermissionBadge =
+              role === "company_admin"
+              && item.href === "/dashboard/permissions"
+              && pendingPermissionCount > 0
             return (
               <Fragment key={item.href}>
                 {isAdminItem && visibleItems.indexOf(item) === firstAdminIdx && firstAdminIdx >= 0 && (
@@ -150,7 +161,15 @@ export default function DashboardSidebar({ role, fullName, companyName, canPrepa
                   }`}
                 >
                   <item.icon size={16} className="shrink-0" aria-hidden="true" />
-                  {item.label}
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {showPermissionBadge && (
+                    <span
+                      className="min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white"
+                      aria-label={`${pendingPermissionCount} pending permission requests`}
+                    >
+                      {pendingPermissionCount > 99 ? "99+" : pendingPermissionCount}
+                    </span>
+                  )}
                 </Link>
                 {isAdminItem && visibleItems.indexOf(item) === lastAdminIdx && lastAdminIdx >= 0 && (
                   <div className="border-t my-2" />

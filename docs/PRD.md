@@ -28,6 +28,8 @@ Build a multi-tenant SaaS platform where insurance companies can upload Excel cu
 - As a Company Admin, I want to send manual test messages so I can verify the system works before going live.
 - As a Company Admin, I want to view message history so I can track who was contacted and when.
 - As a Company Admin, I want to manage staff users so they can help with operations.
+- As a Company Admin, I want to disable an individual staff permission without disabling or deleting the employee account.
+- As a Company Admin, I want a visible pending-request badge and notification bell so permission requests are not missed.
 - As a Company Admin, I want to send broadcast messages to selected customers so I can share promotions or announcements.
 
 ### Staff
@@ -57,7 +59,8 @@ Build a multi-tenant SaaS platform where insurance companies can upload Excel cu
 - Message templates (edit renewal, birthday, broadcast templates)
 - Message history (sent, failed, pending, filtered by type)
 - Send broadcast (compose, choose audience, preview, confirm)
-- Staff management (list, invite, remove)
+- Staff management (list, invite, disable/reactivate access, disable individual permissions)
+- Permission-request notifications (sidebar count and admin notification bell)
 - Reminder settings (configure days before expiry)
 - Opt-out list (view opted-out numbers)
 
@@ -107,6 +110,7 @@ Build a multi-tenant SaaS platform where insurance companies can upload Excel cu
 | veh_make_model | text | |
 | driver_age | int | |
 | driver_dob | date | |
+| driver_birth_mmdd | smallint | Database-generated MMDD key for indexed birthday queries |
 | new_premium_vat_amount | numeric | |
 | communication_status | text | allowed, opted_out, invalid_number |
 | created_at | timestamptz | |
@@ -221,6 +225,16 @@ Build a multi-tenant SaaS platform where insurance companies can upload Excel cu
 14. Reminder settings (configurable days)
 15. Staff user management
 16. Invalid mobile number detection during import
+17. Strict spreadsheet-date normalization for day-first, ISO, Arabic-digit, native Excel date, and Excel serial inputs
+18. Company-admin permission-request badge and notification bell
+
+### Spreadsheet Date Policy
+- Oman day-first input is the default for numeric dates (`D/M/YYYY`, `D-M-YYYY`, or `D.M.YYYY`), with or without zero padding.
+- ISO year-first dates (`YYYY-MM-DD`, `YYYY/MM/DD`, or `YYYY.MM.DD`) are accepted.
+- Arabic-Indic and Eastern Arabic digits are normalized before validation.
+- Native Excel dates and valid Excel serial values are accepted.
+- Dates are validated as real Gregorian calendar dates and stored as `YYYY-MM-DD` without timezone conversion.
+- Ambiguous US month-first input is not guessed; it must be rejected unless a future import-format selector explicitly enables it.
 
 ### Out of Scope (MVP)
 - Full automatic message sending (manual approval only)

@@ -234,6 +234,7 @@ export async function deactivateStaff(
   const profile = await getProfile()
   if (!profile?.company_id) return { success: false, error: "No company assigned" }
   if (profile.role !== "company_admin") return { success: false, error: "Only admins can manage staff" }
+  if (profile.is_active !== true) return { success: false, error: "Account is not active" }
 
   if (userId === profile.id) return { success: false, error: "You cannot deactivate yourself" }
 
@@ -268,6 +269,7 @@ export async function activateStaff(
   const profile = await getProfile()
   if (!profile?.company_id) return { success: false, error: "No company assigned" }
   if (profile.role !== "company_admin") return { success: false, error: "Only admins can manage staff" }
+  if (profile.is_active !== true) return { success: false, error: "Account is not active" }
 
   const supabase = await createClient()
 

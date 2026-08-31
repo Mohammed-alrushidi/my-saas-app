@@ -162,9 +162,9 @@ export default function StaffPage() {
                 <th className="px-4 py-3 font-medium">Name</th>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Permissions</th>
+                <th className="px-4 py-3 font-medium">الصلاحيات النشطة</th>
                 <th className="px-4 py-3 font-medium">Invited</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
+                <th className="px-4 py-3 font-medium">إدارة الحساب</th>
               </tr>
             </thead>
             <tbody>
@@ -197,11 +197,11 @@ export default function StaffPage() {
                   <td className="px-4 py-3">
                     {s.is_active ? (
                       <Button variant="destructive" size="sm" onClick={() => requestDeactivate(s.id, s.full_name ?? s.email ?? "")}>
-                        Deactivate
+                        تعطيل الموظف
                       </Button>
                     ) : (
                       <Button variant="ghost" size="sm" onClick={() => requestActivate(s.id, s.full_name ?? s.email ?? "")}>
-                        Reactivate
+                        إعادة التفعيل
                       </Button>
                     )}
                   </td>
@@ -214,15 +214,15 @@ export default function StaffPage() {
 
       <ConfirmDialog
         open={pendingAction !== null}
-        title={pendingAction?.type === "activate" ? "Reactivate staff member" : "Deactivate staff member"}
+        title={pendingAction?.type === "activate" ? "إعادة تفعيل الموظف" : "تعطيل الموظف"}
         message={
           pendingAction
             ? pendingAction.type === "deactivate"
-              ? `Deactivate ${pendingAction.name}? They will lose access to the dashboard.`
-              : `Reactivate ${pendingAction.name}? They will regain access to the dashboard.`
+              ? `تعطيل الموظف ${pendingAction.name}؟ سيفقد إمكانية الدخول إلى لوحة التحكم، ولن تُحذف بياناته.`
+              : `إعادة تفعيل الموظف ${pendingAction.name}؟ سيتمكن من الدخول إلى لوحة التحكم مجددًا.`
             : ""
         }
-        confirmLabel={acting ? "Working..." : pendingAction?.type === "activate" ? "Reactivate" : "Deactivate"}
+        confirmLabel={acting ? "جارٍ التنفيذ..." : pendingAction?.type === "activate" ? "إعادة التفعيل" : "تعطيل الموظف"}
         confirmDisabled={acting}
         variant={pendingAction?.type === "deactivate" ? "danger" : "default"}
         onCancel={() => setPendingAction(null)}

@@ -67,6 +67,7 @@ export async function createPermissionRequest(
   }
 
   revalidatePath("/dashboard/permissions")
+  revalidatePath("/dashboard", "layout")
   return { success: true }
 }
 
@@ -100,6 +101,30 @@ export type CompanyPermissionRequest = {
   created_at: string
 }
 
+export type PendingPermissionNotification = {
+  id: string
+  staff_name: string | null
+  permission: string
+  created_at: string
+}
+
+export type PendingPermissionSummary = {
+  count: number
+  items: PendingPermissionNotification[]
+}
+
+function firstJoinedRow(value: unknown): Record<string, unknown> | null {
+  const candidate = Array.isArray(value) ? value[0] : value
+  return candidate && typeof candidate === "object"
+    ? candidate as Record<string, unknown>
+    : null
+}
+
+function joinedFullName(value: unknown): string | null {
+  const row = firstJoinedRow(value)
+  return typeof row?.full_name === "string" ? row.full_name : null
+}
+
 async function validateAdminCompanyAccess(): Promise<
   { profile: { id: string; company_id: string } } | { error: string }
 > {
@@ -128,10 +153,10 @@ export async function getCompanyPermissionRequests(): Promise<{
 
   if (error || !data) return null
 
-  const all = data.map((r: any) => ({
+  const all: CompanyPermissionRequest[] = data.map((r) => ({
     id: r.id,
     staff_id: r.staff_id,
-    staff_name: r.staff?.full_name ?? null,
+    staff_name: joinedFullName(r.staff),
     permission: r.permission,
     reason: r.reason,
     status: r.status as "pending" | "approved" | "rejected",
@@ -144,6 +169,35 @@ export async function getCompanyPermissionRequests(): Promise<{
   return {
     pending: all.filter((r) => r.status === "pending"),
     reviewed: all.filter((r) => r.status === "approved" || r.status === "rejected"),
+  }
+}
+
+export async function getPendingPermissionSummary(): Promise<PendingPermissionSummary | null> {
+  const result = await validateAdminCompanyAccess()
+  if ("error" in result) return null
+
+  const supabase = await createClient()
+  const { data, count, error } = await supabase
+    .from("permission_requests")
+    .select(
+      "id, permission, created_at, staff:profiles!permission_requests_staff_id_fkey(full_name)",
+      { count: "exact" },
+    )
+    .eq("company_id", result.profile.company_id)
+    .eq("status", "pending")
+    .limit(5)
+    .order("created_at", { ascending: false })
+
+  if (error) return null
+
+  return {
+    count: count ?? data?.length ?? 0,
+    items: (data ?? []).map((request) => ({
+      id: request.id,
+      staff_name: joinedFullName(request.staff),
+      permission: request.permission,
+      created_at: request.created_at,
+    })),
   }
 }
 
@@ -172,7 +226,7 @@ export async function approvePermissionRequest(
 
   if (request.company_id !== admin.company_id) return { success: false, error: "This request does not belong to your company" }
 
-  const staffProfile = (request as any).staff
+  const staffProfile = firstJoinedRow(request.staff)
   if (!staffProfile) return { success: false, error: "Staff member not found" }
   if (staffProfile.role !== "staff") return { success: false, error: "Cannot approve permissions for this user" }
   if (!staffProfile.is_active) return { success: false, error: "Cannot approve permissions for an inactive staff member" }
@@ -218,6 +272,7 @@ export async function approvePermissionRequest(
   }
 
   revalidatePath("/dashboard/permissions")
+  revalidatePath("/dashboard", "layout")
   return { success: true }
 }
 
@@ -259,5 +314,6 @@ export async function rejectPermissionRequest(
   if (updateError) return { success: false, error: updateError.message }
 
   revalidatePath("/dashboard/permissions")
+  revalidatePath("/dashboard", "layout")
   return { success: true }
 }

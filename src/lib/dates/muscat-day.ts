@@ -35,12 +35,9 @@ export function muscatExpiryWindow(
   return { start: businessDate, end: addDaysIso(businessDate, days) }
 }
 
-/**
- * PostgREST `like` pattern matching any driver_dob within the Muscat
- * current month, regardless of birth year: `____-MM-__`.
- */
-export function muscatMonthPattern(now: Date = new Date()): string {
+/** Numeric MMDD bounds for the current Muscat business month. */
+export function muscatMonthDayRange(now: Date = new Date()): { start: number; end: number } {
   const businessDate = getMuscatBusinessDayBounds(now).businessDate
-  const month = businessDate.slice(5, 7)
-  return `____-${month}-__`
+  const month = Number(businessDate.slice(5, 7))
+  return { start: month * 100 + 1, end: month * 100 + 31 }
 }

@@ -19,8 +19,8 @@ export default function AdminRequestList({
   initialReviewed: CompanyPermissionRequest[]
 }) {
   const router = useRouter()
-  const [pending, setPending] = useState(initialPending)
-  const [reviewed, setReviewed] = useState(initialReviewed)
+  const pending = initialPending
+  const reviewed = initialReviewed
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [actionError, setActionError] = useState<string | null>(null)
   const [actioning, setActioning] = useState<string | null>(null)
@@ -33,6 +33,7 @@ export default function AdminRequestList({
       reviewNotes[requestId] || undefined,
     )
     if (result.success) {
+      window.dispatchEvent(new Event("permission-requests-updated"))
       router.refresh()
     } else {
       setActionError(result.error || "Failed to approve")
@@ -48,6 +49,7 @@ export default function AdminRequestList({
       reviewNotes[requestId] || undefined,
     )
     if (result.success) {
+      window.dispatchEvent(new Event("permission-requests-updated"))
       router.refresh()
     } else {
       setActionError(result.error || "Failed to reject")
