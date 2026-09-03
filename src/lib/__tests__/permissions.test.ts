@@ -75,6 +75,7 @@ describe("COMPANY_PERMISSIONS", () => {
       "templates:edit",
       "reminder_settings:edit",
       "broadcast:create",
+      "birthday:send",
     ])
   })
 })
@@ -139,6 +140,16 @@ describe("can() — staff", () => {
 
     const result = await can(staff, "templates:edit")
     expect(result).toBe(true)
+  })
+
+  it("allows an active staff member with the birthday send grant", async () => {
+    mockMaybeSingle = { data: { id: "birthday-grant" } }
+
+    const result = await can(staff, "birthday:send")
+
+    expect(result).toBe(true)
+    expect(mockChain.eq).toHaveBeenCalledWith("permission", "birthday:send")
+    expect(mockChain.eq).toHaveBeenCalledWith("is_active", true)
   })
 
   it("returns false for revoked grant (maybeSingle returns null)", async () => {

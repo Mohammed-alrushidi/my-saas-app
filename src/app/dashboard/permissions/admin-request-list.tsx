@@ -10,6 +10,14 @@ import {
 import { EmptyState } from "@/components/ui/empty-state"
 import { Inbox, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useLanguage } from "@/components/language-provider"
+
+function permissionKey(permission: string) {
+  if (permission === "templates:edit") return "permission.templates" as const
+  if (permission === "reminder_settings:edit") return "permission.reminders" as const
+  if (permission === "broadcast:create") return "permission.broadcast" as const
+  return "permission.birthdaySend" as const
+}
 
 export default function AdminRequestList({
   initialPending,
@@ -18,6 +26,7 @@ export default function AdminRequestList({
   initialPending: CompanyPermissionRequest[]
   initialReviewed: CompanyPermissionRequest[]
 }) {
+  const { locale, t } = useLanguage()
   const router = useRouter()
   const pending = initialPending
   const reviewed = initialReviewed
@@ -36,7 +45,7 @@ export default function AdminRequestList({
       window.dispatchEvent(new Event("permission-requests-updated"))
       router.refresh()
     } else {
-      setActionError(result.error || "Failed to approve")
+      setActionError(result.error || t("permissions.approveFailed"))
       setActioning(null)
     }
   }
@@ -52,7 +61,7 @@ export default function AdminRequestList({
       window.dispatchEvent(new Event("permission-requests-updated"))
       router.refresh()
     } else {
-      setActionError(result.error || "Failed to reject")
+      setActionError(result.error || t("permissions.rejectFailed"))
       setActioning(null)
     }
   }
@@ -60,39 +69,39 @@ export default function AdminRequestList({
   return (
     <>
       <section>
-        <h2 className="mb-4 text-lg font-semibold">Pending Requests</h2>
+        <h2 className="mb-4 text-lg font-semibold">{t("permissions.pending")}</h2>
         {pending.length === 0 ? (
           <div className="rounded-lg border bg-card">
-            <EmptyState icon={Inbox} title="No pending requests" />
+            <EmptyState icon={Inbox} title={t("permissions.noPending")} />
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-start text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">Staff</th>
-                  <th className="px-4 py-3 font-medium">Permission</th>
-                  <th className="px-4 py-3 font-medium">Reason</th>
-                  <th className="px-4 py-3 font-medium">Submitted</th>
-                  <th className="px-4 py-3 font-medium">Actions</th>
+                  <th className="px-4 py-3 font-medium">{t("permissions.staff")}</th>
+                  <th className="px-4 py-3 font-medium">{t("permissions.permission")}</th>
+                  <th className="px-4 py-3 font-medium">{t("permissions.reasonLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("permissions.submittedAt")}</th>
+                  <th className="px-4 py-3 font-medium">{t("permissions.actions")}</th>
                 </tr>
               </thead>
               <tbody>
                 {pending.map((r) => (
                   <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-3">{r.staff_name || "Unknown"}</td>
-                    <td className="px-4 py-3">{r.permission}</td>
+                    <td className="px-4 py-3">{r.staff_name || t("permissions.unknown")}</td>
+                    <td className="px-4 py-3">{t(permissionKey(r.permission))}</td>
                     <td className="max-w-xs truncate px-4 py-3 text-muted-foreground" title={r.reason}>
                       {r.reason}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      {new Date(r.created_at).toLocaleDateString()}
+                      {new Date(r.created_at).toLocaleDateString(locale === "ar" ? "ar-OM" : "en-GB")}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         <input
                           type="text"
-                          placeholder="Review note (optional)"
+                          placeholder={t("permissions.reviewPlaceholder")}
                           className="w-40 rounded border px-2 py-1 text-xs"
                           value={reviewNotes[r.id] || ""}
                           onChange={(e) =>
@@ -106,7 +115,7 @@ export default function AdminRequestList({
                             disabled={actioning === r.id}
                             size="sm"
                           >
-                            {actioning === r.id ? "..." : "Approve"}
+                            {actioning === r.id ? "..." : t("permissions.approve")}
                           </Button>
                           <Button
                             variant="destructive"
@@ -114,7 +123,7 @@ export default function AdminRequestList({
                             onClick={() => handleReject(r.id)}
                             disabled={actioning === r.id}
                           >
-                            Reject
+                            {t("permissions.reject")}
                           </Button>
                         </div>
                       </div>
@@ -131,28 +140,28 @@ export default function AdminRequestList({
       </section>
 
       <section>
-        <h2 className="mb-4 text-lg font-semibold">Reviewed History</h2>
+        <h2 className="mb-4 text-lg font-semibold">{t("permissions.reviewedHistory")}</h2>
         {reviewed.length === 0 ? (
           <div className="rounded-lg border bg-card">
-            <EmptyState icon={Clock} title="No reviewed requests yet" />
+            <EmptyState icon={Clock} title={t("permissions.noReviewed")} />
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-start text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">Staff</th>
-                  <th className="px-4 py-3 font-medium">Permission</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Reviewed</th>
-                  <th className="px-4 py-3 font-medium">Review Note</th>
+                  <th className="px-4 py-3 font-medium">{t("permissions.staff")}</th>
+                  <th className="px-4 py-3 font-medium">{t("permissions.permission")}</th>
+                  <th className="px-4 py-3 font-medium">{t("permissions.status")}</th>
+                  <th className="px-4 py-3 font-medium">{t("permissions.reviewedAt")}</th>
+                  <th className="px-4 py-3 font-medium">{t("permissions.reviewNote")}</th>
                 </tr>
               </thead>
               <tbody>
                 {reviewed.map((r) => (
                   <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-3">{r.staff_name || "Unknown"}</td>
-                    <td className="px-4 py-3">{r.permission}</td>
+                    <td className="px-4 py-3">{r.staff_name || t("permissions.unknown")}</td>
+                    <td className="px-4 py-3">{t(permissionKey(r.permission))}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -161,12 +170,12 @@ export default function AdminRequestList({
                             : "bg-red-100 text-red-700"
                         }`}
                       >
-                        {r.status}
+                        {r.status === "approved" ? t("permissions.approved") : t("permissions.rejected")}
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                       {r.reviewed_at
-                        ? new Date(r.reviewed_at).toLocaleDateString()
+                        ? new Date(r.reviewed_at).toLocaleDateString(locale === "ar" ? "ar-OM" : "en-GB")
                         : "—"}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { useLanguage } from "@/components/language-provider"
 
 export default function DashboardError({
   error,
@@ -10,18 +11,19 @@ export default function DashboardError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const { t } = useLanguage()
   useEffect(() => {
     console.error(error)
   }, [error])
 
   return (
     <div className="flex flex-col items-center justify-center gap-3 p-16 text-center">
-      <h2 className="text-lg font-semibold">Something went wrong</h2>
+      <h2 className="text-lg font-semibold">{t("dashboardError.title")}</h2>
       <p className="max-w-md text-sm text-muted-foreground">
-        An unexpected error occurred while loading this page. Your data is safe.
-        {error?.digest ? ` (Reference: ${error.digest})` : null}
+        {t("dashboardError.description")}
+        {error?.digest ? ` (${t("dashboardError.reference", { digest: error.digest })})` : null}
       </p>
-      <Button onClick={reset}>Try again</Button>
+      <Button onClick={reset}>{t("dashboardError.retry")}</Button>
     </div>
   )
 }

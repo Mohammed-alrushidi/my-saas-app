@@ -2,9 +2,14 @@ import { Notice } from "@/components/ui/notice"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { signIn } from "./actions"
+import { LanguageSelector } from "@/components/language-selector"
+import { translate } from "@/lib/i18n"
+import { getRequestLocale } from "@/lib/i18n/server"
 
 export default async function LoginPage(props: { searchParams: Promise<{ error?: string; check_email?: string }> }) {
   const searchParams = await props.searchParams
+  const locale = await getRequestLocale()
+  const t = (key: Parameters<typeof translate>[1]) => translate(locale, key)
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -24,9 +29,12 @@ export default async function LoginPage(props: { searchParams: Promise<{ error?:
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
+        <div className="flex justify-end">
+          <LanguageSelector compact />
+        </div>
         <div className="text-center">
-          <h1 className="text-2xl font-bold">Sign in</h1>
-          <p className="text-muted-foreground text-sm">Sign in to your account</p>
+          <h1 className="text-2xl font-bold">{t("auth.signIn")}</h1>
+          <p className="text-muted-foreground text-sm">{t("auth.signInDescription")}</p>
         </div>
 
         {searchParams.error && (
@@ -37,13 +45,13 @@ export default async function LoginPage(props: { searchParams: Promise<{ error?:
 
         {searchParams.check_email && (
           <Notice variant="success">
-            Check your email for a confirmation link.
+            {t("auth.checkEmail")}
           </Notice>
         )}
 
         <form className="space-y-4">
           <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">Email</label>
+            <label htmlFor="email" className="text-sm font-medium">{t("auth.email")}</label>
             <input
               id="email"
               name="email"
@@ -55,14 +63,14 @@ export default async function LoginPage(props: { searchParams: Promise<{ error?:
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">Password</label>
+            <label htmlFor="password" className="text-sm font-medium">{t("auth.password")}</label>
             <input
               id="password"
               name="password"
               type="password"
               required
               className="w-full rounded-md border px-3 py-2 text-sm"
-              placeholder="Enter your password"
+              placeholder={t("auth.passwordPlaceholder")}
             />
           </div>
 
@@ -71,13 +79,13 @@ export default async function LoginPage(props: { searchParams: Promise<{ error?:
             formAction={signIn}
             className="w-full rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
           >
-            Sign in
+            {t("auth.signIn")}
           </button>
         </form>
 
         <p className="text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <a href="/sign-up" className="font-medium text-black hover:underline">Sign up</a>
+          {t("auth.noAccount")}{" "}
+          <a href="/sign-up" className="font-medium text-black hover:underline">{t("auth.signUp")}</a>
         </p>
       </div>
     </div>

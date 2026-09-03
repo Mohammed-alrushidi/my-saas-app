@@ -4,17 +4,13 @@ import { useState } from "react"
 import { createPermissionRequest } from "./actions"
 import { COMPANY_PERMISSIONS } from "@/lib/permission-types"
 import { Button } from "@/components/ui/button"
-
-const PERMISSION_LABELS: Record<string, string> = {
-  "templates:edit": "Templates: Edit",
-  "reminder_settings:edit": "Reminder Settings: Edit",
-  "broadcast:create": "Broadcast: Create",
-}
+import { useLanguage } from "@/components/language-provider"
 
 const MIN_REASON = 10
 const MAX_REASON = 500
 
 export default function PermissionRequestForm() {
+  const { t } = useLanguage()
   const [permission, setPermission] = useState("")
   const [reason, setReason] = useState("")
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
@@ -28,11 +24,11 @@ export default function PermissionRequestForm() {
     const result = await createPermissionRequest(permission, reason)
 
     if (result.success) {
-      setMessage({ type: "success", text: "Request submitted successfully" })
+      setMessage({ type: "success", text: t("permissions.submitted") })
       setPermission("")
       setReason("")
     } else {
-      setMessage({ type: "error", text: result.error ?? "Something went wrong" })
+      setMessage({ type: "error", text: result.error ?? t("permissions.submitFailed") })
     }
 
     setSubmitting(false)
@@ -40,11 +36,11 @@ export default function PermissionRequestForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border p-4">
-      <h2 className="text-lg font-semibold">Request a Permission</h2>
+      <h2 className="text-lg font-semibold">{t("permissions.requestTitle")}</h2>
 
       <div>
         <label htmlFor="permission" className="mb-1 block text-sm font-medium">
-          Permission type
+          {t("permissions.type")}
         </label>
         <select
           id="permission"
@@ -53,10 +49,16 @@ export default function PermissionRequestForm() {
           required
           className="w-full rounded-md border px-3 py-2 text-sm"
         >
-          <option value="">Select a permission...</option>
+          <option value="">{t("permissions.select")}</option>
           {COMPANY_PERMISSIONS.map((p) => (
             <option key={p} value={p}>
-              {PERMISSION_LABELS[p] ?? p}
+              {p === "templates:edit"
+                ? t("permission.templates")
+                : p === "reminder_settings:edit"
+                  ? t("permission.reminders")
+                  : p === "broadcast:create"
+                    ? t("permission.broadcast")
+                    : t("permission.birthdaySend")}
             </option>
           ))}
         </select>
@@ -64,7 +66,7 @@ export default function PermissionRequestForm() {
 
       <div>
         <label htmlFor="reason" className="mb-1 block text-sm font-medium">
-          Reason
+          {t("permissions.reason")}
         </label>
         <textarea
           id="reason"
@@ -74,10 +76,11 @@ export default function PermissionRequestForm() {
           maxLength={MAX_REASON}
           required
           className="w-full rounded-md border px-3 py-2 text-sm"
-          placeholder="Explain why you need this permission..."
+          placeholder={t("permissions.reasonPlaceholder")}
         />
         <p className={`mt-1 text-xs ${reason.length < MIN_REASON ? "text-muted-foreground" : "text-green-600"}`}>
-          {reason.length}/{MAX_REASON} characters{reason.length >= MIN_REASON ? " ✓" : ` (min ${MIN_REASON})`}
+          {t("permissions.characters", { count: reason.length, max: MAX_REASON })}
+          {reason.length >= MIN_REASON ? " ✓" : ` (${t("permissions.minimum", { min: MIN_REASON })})`}
         </p>
       </div>
 
@@ -85,7 +88,7 @@ export default function PermissionRequestForm() {
         type="submit"
         disabled={submitting || reason.trim().length < MIN_REASON || !permission}
       >
-        {submitting ? "Submitting..." : "Submit Request"}
+        {submitting ? t("permissions.submitting") : t("permissions.submit")}
       </Button>
 
       {message && (

@@ -6,6 +6,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Notice } from "@/components/ui/notice"
 import { ConfirmDialog } from "@/components/confirm-dialog"
+import { useLanguage } from "@/components/language-provider"
 
 type Props = {
   importId: string
@@ -13,6 +14,7 @@ type Props = {
 }
 
 export function DeleteImportButton({ importId, fileName }: Props) {
+  const { t } = useLanguage()
   const router = useRouter()
   const [deleting, setDeleting] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -27,10 +29,14 @@ export function DeleteImportButton({ importId, fileName }: Props) {
         setConfirmOpen(false)
         router.refresh()
       } else {
-        setError(result.error ?? "Failed to delete import")
+        setError(result.error === "No company assigned"
+          ? t("upload.errorNoCompany")
+          : result.error === "Only company admins can delete imports"
+            ? t("upload.errorAdminOnly")
+            : t("imports.deleteError"))
       }
     } catch {
-      setError("Something went wrong. Please try again.")
+      setError(t("imports.deleteError"))
     } finally {
       setDeleting(false)
     }
@@ -44,14 +50,14 @@ export function DeleteImportButton({ importId, fileName }: Props) {
         onClick={() => setConfirmOpen(true)}
         disabled={deleting}
       >
-        {deleting ? "Deleting..." : "Delete"}
+        {deleting ? t("imports.deleting") : t("imports.delete")}
       </Button>
       {error && <Notice variant="error">{error}</Notice>}
       <ConfirmDialog
         open={confirmOpen}
-        title="Delete import"
-        message={`Delete import "${fileName}"? All records from this import will be permanently removed.`}
-        confirmLabel={deleting ? "Deleting..." : "Delete"}
+        title={t("imports.deleteTitle")}
+        message={t("imports.deleteMessage", { name: fileName })}
+        confirmLabel={deleting ? t("imports.deleting") : t("imports.delete")}
         confirmDisabled={deleting}
         variant="danger"
         onCancel={() => setConfirmOpen(false)}

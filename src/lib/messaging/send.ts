@@ -1,5 +1,5 @@
 import { getProvider } from "./provider"
-import type { SendResult } from "./types"
+import type { ProviderTemplate, SendResult } from "./types"
 
 const BATCH_SIZE = 5
 const BATCH_DELAY_MS = 500
@@ -14,7 +14,7 @@ function normalizeMobile(mobile: string): string {
 }
 
 export async function sendMessages(
-  recipients: { mobile: string; body: string }[],
+  recipients: { mobile: string; body: string; template?: ProviderTemplate }[],
 ): Promise<(SendResult & { mobile: string })[]> {
   const provider = getProvider()
   const allResults: (SendResult & { mobile: string })[] = []
@@ -24,7 +24,9 @@ export async function sendMessages(
     const normalized = batch.map((r) => ({ ...r, mobile: normalizeMobile(r.mobile) }))
 
     const batchResults = await Promise.allSettled(
-      normalized.map((r) => provider.send(r.mobile, r.body)),
+      normalized.map((r) => r.template
+        ? provider.send(r.mobile, r.body, r.template)
+        : provider.send(r.mobile, r.body)),
     )
 
     for (let j = 0; j < normalized.length; j++) {

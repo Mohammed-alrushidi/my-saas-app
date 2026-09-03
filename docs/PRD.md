@@ -31,11 +31,16 @@ Build a multi-tenant SaaS platform where insurance companies can upload Excel cu
 - As a Company Admin, I want to disable an individual staff permission without disabling or deleting the employee account.
 - As a Company Admin, I want a visible pending-request badge and notification bell so permission requests are not missed.
 - As a Company Admin, I want to send broadcast messages to selected customers so I can share promotions or announcements.
+- As a Company Admin, I want an independent Automatic Birthday Messages control so disabling birthday automation leaves renewal reminders and manual birthday sending unchanged.
+- As a Company Admin, I want birthday automation to start disabled and require an explicit reviewed activation before any automatic dispatch.
+- As a Company Admin, I want to grant or revoke a dedicated birthday-send permission for individual staff users.
+- As a user, I want to choose Arabic or English from Settings and keep that preference without translating imported customer data.
 
 ### Staff
 - As a Staff user, I want to view imported records so I can see customer data.
 - As a Staff user, I want to upload Excel files (if permitted) so I can help with data entry.
 - As a Staff user, I want to preview upcoming expiries and birthdays so I can assist with operations.
+- As a Staff user with an active `birthday:send` grant, I want to send a greeting to one customer whose birthday is today while automatic birthday messages are disabled.
 - As a Staff user, I should NOT be able to manage company settings, billing, or other staff users.
 
 ## 5. Pages Needed
@@ -62,6 +67,8 @@ Build a multi-tenant SaaS platform where insurance companies can upload Excel cu
 - Staff management (list, invite, disable/reactivate access, disable individual permissions)
 - Permission-request notifications (sidebar count and admin notification bell)
 - Reminder settings (configure days before expiry)
+- Language settings (Arabic or English, stored per user)
+- Automatic Birthday Messages (Company Admin only; default off)
 - Opt-out list (view opted-out numbers)
 
 ### Staff Pages
@@ -70,6 +77,7 @@ Build a multi-tenant SaaS platform where insurance companies can upload Excel cu
 - Customer records (view only)
 - Upcoming expiries (view only)
 - Birthdays (view only)
+- Birthday send button for today's rows only when `birthday:send` is granted and automatic birthday messages are disabled
 - Send manual test message (if permitted)
 
 ## 6. Database Requirements
@@ -227,6 +235,9 @@ Build a multi-tenant SaaS platform where insurance companies can upload Excel cu
 16. Invalid mobile number detection during import
 17. Strict spreadsheet-date normalization for day-first, ISO, Arabic-digit, native Excel date, and Excel serial inputs
 18. Company-admin permission-request badge and notification bell
+19. Arabic and English interface selection with correct RTL/LTR direction
+20. Imported customer values remain data, not translatable UI text
+21. Independent birthday automation control plus permission-gated single-recipient manual birthday sending
 
 ### Spreadsheet Date Policy
 - Oman day-first input is the default for numeric dates (`D/M/YYYY`, `D-M-YYYY`, or `D.M.YYYY`), with or without zero padding.
@@ -237,9 +248,9 @@ Build a multi-tenant SaaS platform where insurance companies can upload Excel cu
 - Ambiguous US month-first input is not guessed; it must be rejected unless a future import-format selector explicitly enables it.
 
 ### Out of Scope (MVP)
-- Full automatic message sending (manual approval only)
+- Live activation of automatic birthday sending before the provider, approved Marketing template, consent, limits, budget, and safety gates are verified
+- Enabling the birthday live-send environment stop gate before provider-template dispatch is implemented and separately approved
 - Advanced analytics and charts
-- Multi-language support
 - Billing/subscription management (hardcoded trial for now)
 - Multiple reminder templates per stage (one flexible template)
 - API for external integrations
@@ -338,6 +349,31 @@ Reply STOP to unsubscribe.
 - `MOCK_MODE=true` remains the no-network default. Live sending requires both explicit live gates and complete, valid Twilio plus public HTTPS callback configuration; otherwise the scheduler fails before creating claims or calling the provider.
 - Later Twilio callbacks use the existing C2 non-regressing, duplicate-safe, terminal-state delivery-status transitions.
 - C3 does not add retries, resend UI, inbound `STOP`, live WhatsApp activation, environment changes, or database migrations.
+
+## 11C. Language and Imported-Data Invariants
+
+- Supported interface locales are `en` and `ar`; English remains the default for existing users until they choose Arabic.
+- The locale is a per-user presentation preference and never grants authorization or changes tenant scope.
+- Arabic renders the application shell and translated interface text right-to-left; English renders left-to-right.
+- Only interface copy is translated. Imported customer names, policy numbers, vehicle descriptions, mobile numbers, quotation references, monetary values, and message-template substitutions are rendered from stored values without translation.
+- Existing validation and canonical storage rules still apply to technical fields such as dates and mobile numbers. Locale changes must not mutate stored customer records or exports.
+- The customer-records slice translates its title, search and status filters, empty states, table headings, communication-status labels, and pagination while rendering every imported customer value verbatim.
+- The Excel-upload slice translates file selection, preview counts, validation labels, confirmation, completion, and undo feedback. File names and sampled spreadsheet cell values remain verbatim, and unknown server failures are shown as safe localized copy rather than raw database details.
+- The message-template slice translates controls, permission guidance, template-type labels, reset confirmation, and variable documentation while leaving user-authored template names, bodies, and variable tokens unchanged.
+- The message-history slice translates tabs, filters, lifecycle labels, retry feedback, previews, and aggregate summaries while leaving recipient, customer, provider, and message-body values unchanged.
+- The broadcast slice translates draft, audience, approval, and send controls while preserving user-authored campaign content and recipient data verbatim; localization must not change any authorization or dispatch rule.
+- The company-dashboard, expiry, opt-out, import-deletion, and dashboard-error slices translate all remaining company-facing labels and feedback while preserving customer, policy, mobile, file, provider, and diagnostic reference values verbatim.
+
+## 11D. Birthday Manual and Automatic Controls
+
+- `Automatic Birthday Messages` is independent from renewal-reminder activation, defaults to disabled, and may be changed only by an active Company Admin.
+- While automation is disabled, today's birthday rows expose a single-recipient send action to an active Company Admin or active staff member with an active `birthday:send` grant.
+- While automation is enabled, the manual birthday-send action is unavailable in both UI and server behavior. The server re-checks this setting at claim time to close stale-page and concurrent-toggle races.
+- Manual and automatic birthday paths share one durable tenant/customer/birthday-year idempotency key. Retries, refreshes, scheduler overlap, and concurrent workers cannot create a second provider call for the same annual greeting.
+- Every claim revalidates tenant ownership, active company and user, today's birthday in the company timezone, valid communication consent/status, STOP opt-out state, valid mobile, approved Marketing template, provider readiness, limits, and budget before provider dispatch.
+- Provider approval metadata is authoritative server-side state. Authenticated company users may edit local template wording but cannot write `provider_template_id`, `provider_category`, `provider_status`, or estimated provider cost directly.
+- February 29 birthdays are eligible on February 28 in non-leap years.
+- Live provider activation remains separately gated. Local and preview verification use the no-network provider only.
 
 ## 11B. Retry, Inbound STOP, and Broadcast Handoff (C4)
 

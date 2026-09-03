@@ -4,6 +4,8 @@ import { isBirthdayToday } from "@/lib/dates/birthday"
 import { getProvider } from "@/lib/messaging/provider"
 import { sendMessages } from "@/lib/messaging/send"
 import type { SendResult } from "@/lib/messaging/types"
+import { isBirthdayLiveSendEnabled, isTwilioContentSid } from "@/lib/birthday-live-gate"
+import type { ProviderTemplate } from "@/lib/messaging/types"
 
 export type SchedulerResult = {
   companiesProcessed: number
@@ -59,6 +61,7 @@ type ClaimedMessage = {
   mobile: string
   body: string
   errorPrefix: string
+  template?: ProviderTemplate
 }
 
 // ─── Idempotency keys ────────────────────────────────────────
@@ -74,10 +77,32 @@ function renewalIdempotencyKey(
 
 function birthdayIdempotencyKey(
   companyId: string,
-  customerRecordId: string,
+  normalizedMobile: string,
   businessDate: string,
 ): string {
-  return `scheduler:birthday:${companyId}:${customerRecordId}:${businessDate}`
+  return `birthday:${companyId}:${normalizedMobile}:${businessDate.slice(0, 4)}`
+}
+
+type BirthdayClaimOutcome = "claimed" | "duplicate" | "limit_reached" | "budget_reached" | "mode_blocked" | "template_unavailable" | "customer_ineligible" | "company_suspended" | "settings_unavailable" | "invalid_request"
+
+export function isBirthdayDispatchDue(
+  sendTime: string | null | undefined,
+  timezone: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!sendTime) return true
+  if (timezone !== "Asia/Muscat") return false
+  const current = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(now)
+  const [currentHour, currentMinute] = current.split(":").map(Number)
+  const [targetHour, targetMinute] = sendTime.slice(0, 5).split(":").map(Number)
+  const currentTotal = currentHour * 60 + currentMinute
+  const targetTotal = targetHour * 60 + targetMinute
+  return currentTotal >= targetTotal && currentTotal < targetTotal + 15
 }
 
 /**
@@ -164,7 +189,7 @@ async function dispatchClaims(
 
   let sendResults: SendResult[]
   try {
-    sendResults = await sendMessages(claims.map(({ mobile, body }) => ({ mobile, body })))
+    sendResults = await sendMessages(claims.map(({ mobile, body, template }) => ({ mobile, body, template })))
   } catch (err) {
     const message = err instanceof Error ? err.message : "Provider initialization failed"
     sendResults = claims.map(() => ({ success: false, error: message }))
@@ -239,10 +264,10 @@ async function processCompany(
     .eq("company_id", company.id)
     .single()
 
-  if (!settings || !settings.is_active) return
-
-  await processRenewals(supabase, company, settings.reminder_days as number[], date, startUtc, endUtcExclusive, result)
-  await processBirthdays(supabase, company, date, startUtc, endUtcExclusive, result)
+  if (settings?.is_active) {
+    await processRenewals(supabase, company, settings.reminder_days as number[], date, startUtc, endUtcExclusive, result)
+  }
+  await processBirthdays(supabase, company, date, result)
 }
 
 // ─── Renewals ────────────────────────────────────────────────
@@ -342,18 +367,30 @@ async function processBirthdays(
   supabase: ReturnType<typeof createAdminClient>,
   company: CompanyRow,
   date: string,
-  startUtc: string,
-  endUtcExclusive: string,
   result: SchedulerResult,
 ): Promise<void> {
-  const { data: template } = await supabase
-    .from("message_templates")
-    .select("body, name")
+  const { data: automation } = await supabase
+    .from("birthday_automation_settings")
+    .select("is_enabled, template_id, send_time, timezone, limit_mode, daily_limit, monthly_limit, budget_protection_enabled, monthly_budget_baisa")
     .eq("company_id", company.id)
-    .eq("template_type", "birthday")
     .maybeSingle()
 
-  if (!template) return
+  if (!automation?.is_enabled || !automation.template_id) return
+  if (!isBirthdayDispatchDue(automation.send_time, automation.timezone)) return
+  if (!isBirthdayLiveSendEnabled()) return
+
+  const { data: template } = await supabase
+    .from("message_templates")
+    .select("id, body, name, provider_template_id, estimated_unit_cost_baisa")
+    .eq("id", automation.template_id)
+    .eq("company_id", company.id)
+    .eq("template_type", "birthday")
+    .eq("provider_category", "marketing")
+    .eq("provider_status", "approved")
+    .not("provider_template_id", "is", null)
+    .maybeSingle()
+
+  if (!template || !isTwilioContentSid(template.provider_template_id)) return
 
   const { data: allCustomers } = await supabase
     .from("customer_records")
@@ -370,14 +407,18 @@ async function processBirthdays(
 
   if (customers.length === 0) return
 
-  // Dedup query: find messages already recorded within today's window
-  const { data: existing } = await supabase
+  // Manual and automatic paths share one annual claim identity.
+  const { data: existing, error: existingError } = await supabase
     .from("messages")
     .select("customer_record_id, idempotency_key")
     .eq("company_id", company.id)
     .eq("message_type", "birthday")
-    .gte("created_at", startUtc)
-    .lt("created_at", endUtcExclusive)
+    .eq("birthday_year", Number(date.slice(0, 4)))
+
+  if (existingError) {
+    result.errors.push(`Company ${company.id} birthday annual claim check: ${existingError.message}`)
+    return
+  }
 
   const existingKeys = new Set(existing?.map((m) => m.customer_record_id) ?? [])
   const eligible = customers.filter((c) => !existingKeys.has(c.id))
@@ -387,39 +428,66 @@ async function processBirthdays(
   const claims: ClaimedMessage[] = []
 
   for (const customer of eligible) {
-    const key = birthdayIdempotencyKey(company.id, customer.id, date)
+    const key = birthdayIdempotencyKey(company.id, customer.mobile_no, date)
     const body = renderTemplate(template.body, customer, company.name)
 
-    const row = {
-      company_id: company.id,
-      customer_record_id: customer.id,
-      message_type: "birthday" as const,
-      recipient_mobile: customer.mobile_no,
-      template_used: template.name,
-      message_body: body,
-      status: "pending" as const,
-      reminder_stage: null,
-      provider_message_id: null,
-      delivery_status: null,
-      failure_reason: null,
-      sent_at: null,
-      idempotency_key: key,
-    }
-
     try {
-      const claimed = await tryClaim(supabase, row)
-      if (claimed) {
+      const { data, error } = await supabase.rpc("claim_birthday_message", {
+        p_company_id: company.id,
+        p_customer_record_id: customer.id,
+        p_template_id: template.id,
+        p_dispatch_source: "automatic",
+        p_recipient_mobile: customer.mobile_no,
+        p_message_body: body,
+        p_birthday_year: Number(date.slice(0, 4)),
+        p_estimated_cost_baisa: template.estimated_unit_cost_baisa ?? 0,
+      })
+      if (error) throw new Error(error.message)
+      const outcome = (data as { outcome?: BirthdayClaimOutcome }[] | null)?.[0]?.outcome
+      if (outcome === "claimed") {
         claims.push({
           idempotencyKey: key,
           mobile: customer.mobile_no,
           body,
           errorPrefix: `Company ${company.id} birthday customer ${customer.id}`,
+          template: {
+            contentSid: template.provider_template_id,
+            variables: { "1": customer.customer_name, "2": company.name },
+          },
         })
+      } else if (outcome !== "duplicate") {
+        result.errors.push(`Company ${company.id} birthday customer ${customer.id}: ${outcome ?? "Claim failed closed"}`)
       }
     } catch (err) {
       result.errors.push(
         `Company ${company.id} birthday customer ${customer.id}: ${err instanceof Error ? err.message : "Insert error"}`,
       )
+    }
+  }
+
+  if (claims.length > 0) {
+    const { data: currentSettings, error: currentSettingsError } = await supabase
+      .from("birthday_automation_settings")
+      .select("is_enabled")
+      .eq("company_id", company.id)
+      .maybeSingle()
+
+    if (currentSettingsError || !currentSettings?.is_enabled) {
+      for (const claim of claims) {
+        await supabase
+          .from("messages")
+          .update({
+            status: "canceled",
+            failure_reason: "Birthday automation was disabled before provider acceptance",
+          })
+          .eq("company_id", company.id)
+          .eq("idempotency_key", claim.idempotencyKey)
+          .eq("status", "pending")
+      }
+      if (currentSettingsError) {
+        result.errors.push(`Company ${company.id} birthday safety recheck: ${currentSettingsError.message}`)
+      }
+      return
     }
   }
 

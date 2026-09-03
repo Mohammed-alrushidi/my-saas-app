@@ -1,7 +1,7 @@
 import twilio from "twilio"
 import type { MessageListInstanceCreateOptions } from "twilio/lib/rest/api/v2010/account/message"
 import { mapTwilioStatus } from "./status"
-import type { MessageProvider, SendResult } from "./types"
+import type { MessageProvider, ProviderTemplate, SendResult } from "./types"
 
 const FAILURE_STATUSES = new Set(["failed", "undelivered", "canceled"])
 
@@ -19,7 +19,7 @@ export class TwilioWhatsAppProvider implements MessageProvider {
     this.statusCallbackUrl = statusCallbackUrl
   }
 
-  async send(to: string, body: string): Promise<SendResult> {
+  async send(to: string, body: string, template?: ProviderTemplate): Promise<SendResult> {
     try {
       const number = to.startsWith("whatsapp:") ? to.slice("whatsapp:".length) : to
       const formattedTo = `whatsapp:+${number.replace(/^\+/, "")}`
@@ -27,7 +27,18 @@ export class TwilioWhatsAppProvider implements MessageProvider {
       const opts: MessageListInstanceCreateOptions = {
         from: this.from,
         to: formattedTo,
-        body,
+      }
+
+      if (template) {
+        if (!/^HX[0-9a-f]{32}$/i.test(template.contentSid)) {
+          return { success: false, error: "Invalid Twilio Content SID" }
+        }
+        opts.contentSid = template.contentSid
+        if (template.variables && Object.keys(template.variables).length > 0) {
+          opts.contentVariables = JSON.stringify(template.variables)
+        }
+      } else {
+        opts.body = body
       }
 
       if (this.statusCallbackUrl) {

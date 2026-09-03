@@ -147,7 +147,7 @@ describe("truthful history filters", () => {
     const { getMessageHistory } = await import("@/app/dashboard/messages/actions")
     expect((await getMessageHistory("all", "queued")).error).toBe("Invalid message status filter")
     expect((await getMessageHistory("marketing", "all")).error).toBe("Invalid message type filter")
-    expect((await getMessageHistory("all", "all", 1, "read")).error).toBe("Invalid delivery status filter")
+    expect((await getMessageHistory("all", "all", 1, "received")).error).toBe("Invalid delivery status filter")
     expect(db.from).not.toHaveBeenCalled()
   })
 })

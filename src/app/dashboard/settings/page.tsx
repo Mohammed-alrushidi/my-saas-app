@@ -10,10 +10,14 @@ import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { SettingsData } from "./actions"
+import { useLanguage } from "@/components/language-provider"
+import { LanguageSelector } from "@/components/language-selector"
+import { BirthdayAutomationCard } from "./birthday-automation-card"
 
 const DAY_OPTIONS = [7, 14, 30] as const
 
 export default function SettingsPage() {
+  const { t } = useLanguage()
   const [settings, setSettings] = useState<SettingsData | null>(null)
   const [reminderDays, setReminderDays] = useState<number[]>([30, 14, 7])
   const [isActive, setIsActive] = useState(true)
@@ -50,10 +54,10 @@ export default function SettingsPage() {
       const result = await saveSettings(reminderDays, isActive)
       setNotification({
         type: result.success ? "success" : "error",
-        message: result.success ? "Settings saved" : result.error ?? "Failed to save",
+        message: result.success ? t("settings.saved") : result.error ?? t("settings.saveFailed"),
       })
     } catch {
-      setNotification({ type: "error", message: "Something went wrong. Please try again." })
+      setNotification({ type: "error", message: t("settings.saveFailed") })
     } finally {
       setSaving(false)
     }
@@ -71,31 +75,31 @@ export default function SettingsPage() {
         setReminderDays([30, 14, 7])
         setIsActive(true)
         setConfirmReset(false)
-        setNotification({ type: "success", message: "Reset to default" })
+        setNotification({ type: "success", message: t("settings.reset") })
       } else {
-        setNotification({ type: "error", message: result.error ?? "Failed to reset" })
+        setNotification({ type: "error", message: result.error ?? t("settings.saveFailed") })
       }
     } catch {
-      setNotification({ type: "error", message: "Something went wrong. Please try again." })
+      setNotification({ type: "error", message: t("settings.saveFailed") })
     } finally {
       setResetting(false)
     }
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-gray-500">Loading settings...</div>
+    return <div className="p-6 text-sm text-gray-500">{t("common.loading")}</div>
   }
 
   if (!settings) {
     return (
       <div className="p-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">Reminder Settings</h1>
+          <h1 className="text-2xl font-bold">{t("settings.title")}</h1>
         </div>
         <EmptyState
           icon={Settings}
-          title="No settings found"
-          description="Reminder settings need to be configured before automated reminders can run. Run the database seed to create default settings."
+          title={t("settings.noSettings")}
+          description={t("settings.noSettingsDescription")}
         />
       </div>
     )
@@ -104,24 +108,33 @@ export default function SettingsPage() {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Reminder Settings</h1>
+        <h1 className="text-2xl font-bold">{t("settings.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Configure when reminder messages are sent before a policy expires.
+          {t("settings.description")}
         </p>
       </div>
 
+      <section className="mb-6 max-w-lg rounded-xl border bg-card p-6 shadow-sm">
+        <LanguageSelector />
+        <p className="mt-2 text-sm text-muted-foreground">{t("settings.languageDescription")}</p>
+      </section>
+
+      <BirthdayAutomationCard />
+
       {!canEdit && role !== "company_admin" && (
         <Notice variant="warning" className="mb-6">
-          You don&apos;t have permission to edit settings.{" "}
-          <Link href="/dashboard/permissions" className="underline font-medium">Request access</Link>.
+          {t("settings.noPermission")}{" "}
+          <Link href="/dashboard/permissions" className="underline font-medium">{t("settings.requestAccess")}</Link>.
         </Notice>
       )}
 
       <div className="max-w-lg rounded-lg border bg-card shadow-sm p-6">
         <div className="mb-6">
-          <h2 className="mb-3 text-lg font-semibold">Reminder Days</h2>
+          <h2 className="mb-1 text-lg font-semibold">{t("settings.reminderTitle")}</h2>
+          <p className="mb-4 text-sm text-muted-foreground">{t("settings.reminderDescription")}</p>
+          <h3 className="mb-3 text-sm font-semibold">{t("settings.reminderDays")}</h3>
           <p className="mb-3 text-sm text-gray-500">
-            Select how many days before expiry a reminder is sent. At least one must be selected when active.
+            {t("settings.reminderDaysHelp")}
           </p>
           <div className="flex flex-col gap-2">
             {DAY_OPTIONS.map((day) => (
@@ -133,14 +146,14 @@ export default function SettingsPage() {
                   disabled={!canEdit}
                   className="h-4 w-4 disabled:opacity-50"
                 />
-                <span className="text-sm">{day} days before expiry</span>
+                <span className="text-sm">{t("settings.daysBefore", { day })}</span>
               </label>
             ))}
           </div>
         </div>
 
         <div className="mb-6">
-          <h2 className="mb-3 text-lg font-semibold">Status</h2>
+          <h2 className="mb-3 text-lg font-semibold">{t("settings.reminderStatus")}</h2>
           <label className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -149,25 +162,25 @@ export default function SettingsPage() {
               disabled={!canEdit}
               className="h-4 w-4 disabled:opacity-50"
             />
-            <span className="text-sm">Reminder messages are active</span>
+            <span className="text-sm">{t("settings.reminderActive")}</span>
           </label>
         </div>
 
         {canEdit && (
           <div className="flex items-center gap-3">
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
+              {saving ? t("common.saving") : t("common.save")}
             </Button>
             <Button variant="outline" onClick={requestReset} disabled={resetting}>
-              {resetting ? "Resetting..." : "Reset to Default"}
+              {resetting ? t("common.loading") : t("settings.reset")}
             </Button>
           </div>
         )}
         <ConfirmDialog
           open={confirmReset}
-          title="Reset reminder settings"
-          message="Reset reminder settings to defaults? Your current configuration will be replaced."
-          confirmLabel={resetting ? "Working..." : "Reset"}
+          title={t("settings.resetTitle")}
+          message={t("settings.resetMessage")}
+          confirmLabel={resetting ? t("common.loading") : t("settings.reset")}
           confirmDisabled={resetting}
           variant="danger"
           onCancel={() => setConfirmReset(false)}

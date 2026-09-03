@@ -12,6 +12,10 @@ export type TemplateData = {
   name: string
   body: string
   is_default: boolean
+  provider_template_id?: string | null
+  provider_category?: "marketing" | "utility" | null
+  provider_status?: "draft" | "pending" | "approved" | "rejected" | "unavailable"
+  estimated_unit_cost_baisa?: number | null
 }
 
 export async function getTemplates(): Promise<TemplateData[]> {

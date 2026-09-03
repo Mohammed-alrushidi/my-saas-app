@@ -4,13 +4,8 @@ import { Search, Inbox } from "lucide-react"
 import { redirect } from "next/navigation"
 import { searchCustomers } from "./actions"
 import { Button } from "@/components/ui/button"
-
-const STATUS_LABELS: Record<string, string> = {
-  all: "All",
-  allowed: "Allowed",
-  invalid_number: "Invalid Number",
-  opted_out: "Opted Out",
-}
+import { translate } from "@/lib/i18n"
+import { getRequestLocale } from "@/lib/i18n/server"
 
 const STATUS_CLASSES: Record<string, string> = {
   allowed: "bg-green-100 text-green-700",
@@ -22,6 +17,9 @@ export default async function CustomersPage(props: {
   searchParams: Promise<{ q?: string; status?: string; page?: string }>
 }) {
   const searchParams = await props.searchParams
+  const locale = await getRequestLocale()
+  const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+    translate(locale, key, values)
   const profile = await getProfile()
 
   if (!profile) redirect("/login")
@@ -31,31 +29,37 @@ export default async function CustomersPage(props: {
   const status = searchParams.status ?? "all"
   const page = Math.max(1, Number(searchParams.page) || 1)
   const { data: customers, total, page: currentPage, pageSize } = await searchCustomers(query, status, page)
+  const statusLabels: Record<string, string> = {
+    all: t("customers.statusAll"),
+    allowed: t("customers.statusAllowed"),
+    invalid_number: t("customers.statusInvalidNumber"),
+    opted_out: t("customers.statusOptedOut"),
+  }
 
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Customers</h1>
-        <p className="text-sm text-muted-foreground">Search and view imported customer records</p>
+        <h1 className="text-2xl font-bold">{t("customers.title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("customers.description")}</p>
       </div>
 
       <form className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end" method="GET">
         <div className="flex-1">
           <label htmlFor="q" className="mb-1 block text-xs font-medium text-muted-foreground">
-            Search by name, policy number, or mobile
+            {t("customers.searchLabel")}
           </label>
           <input
             id="q"
             name="q"
             type="text"
             defaultValue={query}
-            placeholder="e.g. Salim, POL001, 968..."
+            placeholder={t("customers.searchPlaceholder")}
             className="w-full rounded-md border px-3 py-2 text-sm"
           />
         </div>
         <div>
           <label htmlFor="status" className="mb-1 block text-xs font-medium text-muted-foreground">
-            Status
+            {t("customers.status")}
           </label>
           <select
             id="status"
@@ -63,53 +67,59 @@ export default async function CustomersPage(props: {
             defaultValue={status}
             className="rounded-md border px-3 py-2 text-sm"
           >
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
+            {Object.entries(statusLabels).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
         </div>
         <Button type="submit">
-          Search
+          {t("customers.search")}
         </Button>
       </form>
 
       <div className="rounded-lg border">
         {customers.length === 0 ? (
           query || status !== "all" ? (
-            <EmptyState icon={Search} title="No customers match your search" />
+            <EmptyState icon={Search} title={t("customers.noMatches")} />
           ) : (
-            <EmptyState icon={Inbox} title="No customer records yet" description="Upload an Excel file to get started." />
+            <EmptyState
+              icon={Inbox}
+              title={t("customers.empty")}
+              description={t("customers.emptyDescription")}
+            />
           )
         ) : (
           <>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Customer</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Mobile</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Policy No</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden sm:table-cell">Vehicle</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden sm:table-cell">Expiry</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {customers.map((r) => (
-                  <tr key={r.id} className="border-b last:border-b-0 hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{r.customer_name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{r.mobile_no}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{r.policy_no}</td>
-                    <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{r.veh_make_model || "—"}</td>
-                    <td className="px-4 py-3 hidden sm:table-cell">{r.policy_expiry_date || "—"}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[r.communication_status] ?? ""}`}>
-                        {STATUS_LABELS[r.communication_status] ?? r.communication_status}
-                      </span>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="px-4 py-3 text-start font-medium text-muted-foreground">{t("customers.customer")}</th>
+                    <th className="px-4 py-3 text-start font-medium text-muted-foreground">{t("customers.mobile")}</th>
+                    <th className="px-4 py-3 text-start font-medium text-muted-foreground">{t("customers.policy")}</th>
+                    <th className="hidden px-4 py-3 text-start font-medium text-muted-foreground sm:table-cell">{t("customers.vehicle")}</th>
+                    <th className="hidden px-4 py-3 text-start font-medium text-muted-foreground sm:table-cell">{t("customers.expiry")}</th>
+                    <th className="px-4 py-3 text-start font-medium text-muted-foreground">{t("customers.status")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {customers.map((r) => (
+                    <tr key={r.id} className="border-b last:border-b-0 hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{r.customer_name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{r.mobile_no}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{r.policy_no}</td>
+                      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">{r.veh_make_model || "—"}</td>
+                      <td className="hidden px-4 py-3 sm:table-cell">{r.policy_expiry_date || "—"}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[r.communication_status] ?? ""}`}>
+                          {statusLabels[r.communication_status] ?? r.communication_status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <PaginationBar
               currentPage={currentPage}
@@ -117,6 +127,7 @@ export default async function CustomersPage(props: {
               pageSize={pageSize}
               query={query}
               status={status}
+              t={t}
             />
           </>
         )}
@@ -131,12 +142,14 @@ function PaginationBar({
   pageSize,
   query,
   status,
+  t,
 }: {
   currentPage: number
   total: number
   pageSize: number
   query: string
   status: string
+  t: (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) => string
 }) {
   const totalPages = Math.ceil(total / pageSize)
   if (totalPages <= 1) return null
@@ -151,32 +164,36 @@ function PaginationBar({
   }
 
   return (
-    <div className="flex items-center justify-between border-t px-4 py-3">
+    <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-sm text-muted-foreground">
-        Showing {(currentPage - 1) * pageSize + 1}&ndash;{Math.min(currentPage * pageSize, total)} of {total}
+        {t("customers.results", {
+          from: (currentPage - 1) * pageSize + 1,
+          to: Math.min(currentPage * pageSize, total),
+          total,
+        })}
       </p>
       <div className="flex items-center gap-2">
         {currentPage <= 1 ? (
-          <span className="rounded-md px-3 py-1.5 text-sm text-gray-400">Previous</span>
+          <span className="rounded-md px-3 py-1.5 text-sm text-gray-400">{t("customers.previous")}</span>
         ) : (
           <a
             href={buildUrl(currentPage - 1)}
             className="rounded-md px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
           >
-            Previous
+            {t("customers.previous")}
           </a>
         )}
         <span className="text-sm text-muted-foreground">
-          Page {currentPage} of {totalPages}
+          {t("customers.page", { current: currentPage, total: totalPages })}
         </span>
         {currentPage >= totalPages ? (
-          <span className="rounded-md px-3 py-1.5 text-sm text-gray-400">Next</span>
+          <span className="rounded-md px-3 py-1.5 text-sm text-gray-400">{t("customers.next")}</span>
         ) : (
           <a
             href={buildUrl(currentPage + 1)}
             className="rounded-md px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
           >
-            Next
+            {t("customers.next")}
           </a>
         )}
       </div>

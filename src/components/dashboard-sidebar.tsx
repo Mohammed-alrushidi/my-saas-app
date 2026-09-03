@@ -22,6 +22,8 @@ import {
 } from "lucide-react"
 import { signOut } from "@/app/login/actions"
 import { Button } from "@/components/ui/button"
+import { useLanguage } from "@/components/language-provider"
+import type { TranslationKey } from "@/lib/i18n"
 
 interface SidebarProps {
   role: string
@@ -33,22 +35,22 @@ interface SidebarProps {
 
 const NAV_ITEMS: {
   href: string
-  label: string
+  label: TranslationKey
   icon: typeof LayoutDashboard
   adminOnly?: boolean
 }[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/upload", label: "Upload Excel", icon: Upload, adminOnly: true },
-  { href: "/dashboard/customers", label: "Customers", icon: Users },
-  { href: "/dashboard/expiries", label: "Upcoming Expiries", icon: CalendarClock },
-  { href: "/dashboard/birthdays", label: "Birthdays", icon: Cake },
-  { href: "/dashboard/templates", label: "Message Templates", icon: FileText },
-  { href: "/dashboard/broadcast", label: "Broadcast Message", icon: Megaphone, adminOnly: true },
-  { href: "/dashboard/staff", label: "Staff", icon: UserCog, adminOnly: true },
-  { href: "/dashboard/messages", label: "Message History", icon: MessageSquare },
-  { href: "/dashboard/opt-outs", label: "Opt-Outs", icon: Ban },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
-  { href: "/dashboard/permissions", label: "Permission Requests", icon: KeyRound },
+  { href: "/dashboard", label: "nav.dashboard", icon: LayoutDashboard },
+  { href: "/dashboard/upload", label: "nav.upload", icon: Upload, adminOnly: true },
+  { href: "/dashboard/customers", label: "nav.customers", icon: Users },
+  { href: "/dashboard/expiries", label: "nav.expiries", icon: CalendarClock },
+  { href: "/dashboard/birthdays", label: "nav.birthdays", icon: Cake },
+  { href: "/dashboard/templates", label: "nav.templates", icon: FileText },
+  { href: "/dashboard/broadcast", label: "nav.broadcast", icon: Megaphone, adminOnly: true },
+  { href: "/dashboard/staff", label: "nav.staff", icon: UserCog, adminOnly: true },
+  { href: "/dashboard/messages", label: "nav.messages", icon: MessageSquare },
+  { href: "/dashboard/opt-outs", label: "nav.optOuts", icon: Ban },
+  { href: "/dashboard/settings", label: "nav.settings", icon: Settings },
+  { href: "/dashboard/permissions", label: "nav.permissions", icon: KeyRound },
 ]
 
 export default function DashboardSidebar({
@@ -59,6 +61,7 @@ export default function DashboardSidebar({
   pendingPermissionCount = 0,
 }: SidebarProps) {
   const pathname = usePathname()
+  const { direction, t } = useLanguage()
   const [mobileOpen, setMobileOpen] = useState(false)
 
   function close() {
@@ -105,25 +108,26 @@ export default function DashboardSidebar({
         variant="ghost"
         size="icon"
         onClick={() => setMobileOpen(true)}
-        className="fixed left-3 top-3 z-20 bg-white shadow-md md:hidden"
-        aria-label="Open sidebar"
+        className={`fixed top-3 z-20 bg-white shadow-md md:hidden ${direction === "rtl" ? "right-3" : "left-3"}`}
+        aria-label={t("nav.open")}
       >
         <Menu size={20} />
       </Button>
 
       {/* Sidebar */}
       <nav
-        aria-label="Main navigation"
+        aria-label={t("nav.main")}
         className={`
-          fixed inset-y-0 left-0 z-40 flex w-56 flex-col border-r bg-gray-50 p-4 transition-transform duration-200 ease-in-out
+          fixed inset-y-0 z-40 flex w-56 flex-col bg-gray-50 p-4 transition-transform duration-200 ease-in-out
           md:relative md:z-auto md:w-56 md:translate-x-0
-          ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
+          ${direction === "rtl" ? "right-0 border-l" : "left-0 border-r"}
+          ${mobileOpen ? "translate-x-0" : direction === "rtl" ? "translate-x-full" : "-translate-x-full"}
         `}
       >
         <div className="mb-6">
           <div className="text-lg font-bold">Insurance SaaS</div>
           <div className="text-xs text-muted-foreground capitalize">
-            {role.replace("_", " ")}
+            {role === "company_admin" ? t("role.company_admin") : role === "staff" ? t("role.staff") : role}
           </div>
         </div>
 
@@ -131,8 +135,8 @@ export default function DashboardSidebar({
           variant="ghost"
           size="icon"
           onClick={close}
-          className="absolute right-3 top-3 md:hidden"
-          aria-label="Close sidebar"
+          className={`absolute top-3 md:hidden ${direction === "rtl" ? "left-3" : "right-3"}`}
+          aria-label={t("nav.close")}
         >
           <X size={20} />
         </Button>
@@ -156,16 +160,16 @@ export default function DashboardSidebar({
                   aria-current={active ? "page" : undefined}
                   className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                     active
-                      ? "bg-accent text-accent-foreground border-l-2 border-primary font-semibold"
+                      ? `bg-accent text-accent-foreground font-semibold ${direction === "rtl" ? "border-r-2" : "border-l-2"} border-primary`
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   }`}
                 >
                   <item.icon size={16} className="shrink-0" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  <span className="min-w-0 flex-1 truncate">{t(item.label)}</span>
                   {showPermissionBadge && (
                     <span
                       className="min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white"
-                      aria-label={`${pendingPermissionCount} pending permission requests`}
+                      aria-label={`${pendingPermissionCount} ${t("nav.permissions")}`}
                     >
                       {pendingPermissionCount > 99 ? "99+" : pendingPermissionCount}
                     </span>
@@ -186,9 +190,9 @@ export default function DashboardSidebar({
               {fullName?.charAt(0)?.toUpperCase() || "?"}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{fullName || "User"}</div>
+              <div className="truncate text-sm font-medium">{fullName || t("common.user")}</div>
               <div className="truncate text-xs text-muted-foreground capitalize">
-                {role.replace("_", " ")}
+                {role === "company_admin" ? t("role.company_admin") : role === "staff" ? t("role.staff") : role}
               </div>
             </div>
             <form action={signOut}>
@@ -196,7 +200,7 @@ export default function DashboardSidebar({
                 variant="ghost"
                 size="icon"
                 type="submit"
-                aria-label="Sign out"
+                aria-label={t("common.signOut")}
               >
                 <LogOut size={16} aria-hidden="true" />
               </Button>

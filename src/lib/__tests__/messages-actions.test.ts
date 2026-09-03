@@ -60,10 +60,19 @@ vi.mock("@/lib/messaging/send", () => ({
   sendMessages: (recipients: MockRecipient[]) => mockSendMessages(recipients),
 }))
 
+const birthdayActionMocks = vi.hoisted(() => ({
+  sendBirthdayNow: vi.fn(),
+}))
+
+vi.mock("@/app/dashboard/birthdays/actions", () => ({
+  sendBirthdayNow: birthdayActionMocks.sendBirthdayNow,
+}))
+
 beforeEach(() => {
   mockResponseQueue = []
   mockResolveValue = { data: null, error: null }
   vi.clearAllMocks()
+  birthdayActionMocks.sendBirthdayNow.mockResolvedValue({ success: true, state: "sent" })
 })
 
 import { previewRenewal, confirmRenewal, getMessageHistory, previewBirthdays, confirmBirthdays } from "@/app/dashboard/messages/actions"
@@ -688,45 +697,11 @@ describe("confirmBirthdays", () => {
       expect(result.skipped).toBe(0)
       expect(result.error).toBeUndefined()
 
-      expect(mockSendMessages).toHaveBeenCalledTimes(1)
-      const recipients = mockSendMessages.mock.calls[0][0]
-      expect(recipients).toHaveLength(2)
-
-      const ahmedR = recipients.find((recipient) => recipient.mobile === "+96891111111")
-      expect(ahmedR).toBeDefined()
-      expect(ahmedR?.body).toContain("Ahmed")
-      expect(ahmedR?.body).toContain("Test Company")
-
-      const fatimaR = recipients.find((recipient) => recipient.mobile === "+96892222222")
-      expect(fatimaR).toBeDefined()
-      expect(fatimaR?.body).toContain("Fatima")
-      expect(fatimaR?.body).toContain("Test Company")
+      expect(birthdayActionMocks.sendBirthdayNow).toHaveBeenCalledTimes(2)
+      expect(birthdayActionMocks.sendBirthdayNow.mock.calls.map(([id]) => id).sort()).toEqual(["c1", "c2"])
+      expect(mockSendMessages).not.toHaveBeenCalled()
 
       expect(revalidatePath).toHaveBeenCalledWith("/dashboard/messages")
-
-      const insertBuilder = mockChain.from.mock.results.at(-1)!.value
-      const inserted = insertBuilder.insert.mock.calls[0][0]
-      expect(inserted).toHaveLength(2)
-      expect(inserted).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          customer_record_id: "c1",
-          company_id: "test-company-id",
-          recipient_mobile: "+96891111111",
-          message_type: "birthday",
-          status: "sent",
-          provider_message_id: "mock-sid",
-          template_used: "Birthday Greeting",
-        }),
-        expect.objectContaining({
-          customer_record_id: "c2",
-          company_id: "test-company-id",
-          recipient_mobile: "+96892222222",
-          message_type: "birthday",
-          status: "sent",
-          provider_message_id: "mock-sid",
-          template_used: "Birthday Greeting",
-        }),
-      ]))
     } finally {
       vi.useRealTimers()
     }

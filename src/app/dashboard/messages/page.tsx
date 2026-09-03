@@ -15,10 +15,74 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { Notice } from "@/components/ui/notice"
 import { Users, CalendarDays, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useLanguage } from "@/components/language-provider"
+import type { TranslationKey } from "@/lib/i18n"
 
 type Tab = "history" | "renewal" | "birthday"
+type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string
+
+const MESSAGE_TYPE_KEYS: Record<string, TranslationKey> = {
+  renewal: "messages.typeRenewal",
+  birthday: "messages.typeBirthday",
+  broadcast: "messages.typeBroadcast",
+}
+
+const STATUS_KEYS: Record<string, TranslationKey> = {
+  pending: "messages.statusPending",
+  queued: "messages.statusQueued",
+  sent: "messages.statusSent",
+  delivered: "messages.statusDelivered",
+  read: "messages.statusRead",
+  failed: "messages.statusFailed",
+  undelivered: "messages.statusUndelivered",
+  skipped: "messages.statusSkipped",
+  canceled: "messages.statusCanceled",
+}
+
+const MESSAGE_ERROR_KEYS: Record<string, TranslationKey> = {
+  "Invalid message type filter": "messages.errorInvalidFilter",
+  "Invalid message status filter": "messages.errorInvalidFilter",
+  "Invalid delivery status filter": "messages.errorInvalidFilter",
+  "Failed to load message history": "messages.errorLoad",
+  "Invalid message identifier": "messages.errorInvalidId",
+  "No company assigned": "messages.errorNoCompany",
+  "Account is inactive": "messages.errorInactive",
+  "Only admins can retry messages": "messages.errorAdminOnly",
+  "Only admins can send messages": "messages.errorAdminOnly",
+  "Message not found": "messages.errorNotFound",
+  "Only failed or undelivered messages can be retried": "messages.errorNotRetryable",
+  "Failed to inspect retry history": "messages.errorRetryHistory",
+  "Maximum retry attempts reached": "messages.errorMaxRetries",
+  "Retry backoff is still active": "messages.errorBackoff",
+  "Recipient is no longer eligible for messaging": "messages.errorIneligible",
+  "Recipient has opted out": "messages.errorOptedOut",
+  "Messaging provider is not configured": "messages.errorProvider",
+  "This retry attempt was already claimed": "messages.errorAlreadyClaimed",
+  "Failed to claim retry": "messages.errorClaim",
+  "Retry outcome is uncertain; check message history before trying again": "messages.errorUncertain",
+  "Invalid reminder day": "messages.errorInvalidDay",
+  "No renewal template found": "messages.errorNoRenewalTemplate",
+  "No birthday template found": "messages.errorNoBirthdayTemplate",
+  "Manual birthday sending is disabled while automation is active": "messages.errorAutomationActive",
+}
+
+function translateMessageType(type: string, t: Translate): string {
+  const key = MESSAGE_TYPE_KEYS[type]
+  return key ? t(key) : type
+}
+
+function translateStatus(status: string, t: Translate): string {
+  const key = STATUS_KEYS[status]
+  return key ? t(key) : status
+}
+
+function translateMessageError(message: string | undefined, t: Translate): string {
+  if (!message) return t("messages.errorGeneric")
+  return t(MESSAGE_ERROR_KEYS[message] ?? "messages.errorGeneric")
+}
 
 export default function MessagesPage() {
+  const { t } = useLanguage()
   const [tab, setTab] = useState<Tab>("history")
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -27,18 +91,18 @@ export default function MessagesPage() {
   }, [])
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: "history", label: "History" },
+    { key: "history", label: t("messages.tabHistory") },
     ...(isAdmin ? ([
-      { key: "renewal" as const, label: "Send Renewal" },
-      { key: "birthday" as const, label: "Send Birthday" },
+      { key: "renewal" as const, label: t("messages.tabRenewal") },
+      { key: "birthday" as const, label: t("messages.tabBirthday") },
     ] as { key: Tab; label: string }[]) : []),
   ]
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Messages</h1>
-        <p className="text-sm text-muted-foreground">Preview and send messages to customers.</p>
+        <h1 className="text-2xl font-bold">{t("messages.title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("messages.description")}</p>
       </div>
 
       <div className="mb-6 flex gap-1 border-b">
@@ -79,15 +143,15 @@ function statusBadgeClass(status: string): string {
     case "undelivered":
       return "bg-red-100 text-red-700"
     case "skipped":
+    case "canceled":
       return "bg-gray-100 text-gray-600"
     default:
       return "bg-gray-100 text-gray-600"
   }
 }
 
-const HISTORY_PAGE_SIZE = 50
-
 function HistorySection({ isAdmin }: { isAdmin: boolean }) {
+  const { t } = useLanguage()
   const [messages, setMessages] = useState<MessageRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -108,7 +172,7 @@ function HistorySection({ isAdmin }: { isAdmin: boolean }) {
     try {
       const result = await getMessageHistory(typeFilter, statusFilter, 1, deliveryFilter)
       if (result.error) {
-        setError(result.error)
+        setError(translateMessageError(result.error, t))
         setMessages([])
         setHasMore(false)
       } else {
@@ -116,13 +180,40 @@ function HistorySection({ isAdmin }: { isAdmin: boolean }) {
         setHasMore(result.hasMore)
       }
     } catch {
-      setError("Something went wrong while loading messages. Please try again.")
+      setError(t("messages.errorLoad"))
     } finally {
       setLoading(false)
     }
-  }, [typeFilter, statusFilter, deliveryFilter])
+  }, [typeFilter, statusFilter, deliveryFilter, t])
 
-  useEffect(() => { fetch() }, [fetch])
+  useEffect(() => {
+    let active = true
+
+    getMessageHistory(typeFilter, statusFilter, 1, deliveryFilter)
+      .then((result) => {
+        if (!active) return
+        if (result.error) {
+          setError(translateMessageError(result.error, t))
+          setMessages([])
+          setHasMore(false)
+        } else {
+          setMessages(result.messages)
+          setHasMore(result.hasMore)
+        }
+        setPage(1)
+      })
+      .catch(() => {
+        if (!active) return
+        setError(t("messages.errorLoad"))
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [typeFilter, statusFilter, deliveryFilter, t])
 
   async function loadMore() {
     setLoadingMore(true)
@@ -130,14 +221,14 @@ function HistorySection({ isAdmin }: { isAdmin: boolean }) {
       const nextPage = page + 1
       const result = await getMessageHistory(typeFilter, statusFilter, nextPage, deliveryFilter)
       if (result.error) {
-        setError(result.error)
+        setError(translateMessageError(result.error, t))
       } else {
         setMessages((prev) => [...prev, ...result.messages])
         setHasMore(result.hasMore)
         setPage(nextPage)
       }
     } catch {
-      setError("Something went wrong while loading more messages. Please try again.")
+      setError(t("messages.errorLoadMore"))
     } finally {
       setLoadingMore(false)
     }
@@ -153,11 +244,11 @@ function HistorySection({ isAdmin }: { isAdmin: boolean }) {
     try {
       const result = await retryFailedMessage(id)
       setRetryNotice(result.success
-        ? `Retry attempt ${result.attempt} was accepted${result.mock ? " in mock mode" : ""}.`
-        : (result.error ?? "Retry failed"))
+        ? t(result.mock ? "messages.retryAcceptedMock" : "messages.retryAccepted", { attempt: result.attempt ?? 1 })
+        : translateMessageError(result.error, t))
       await fetch()
     } catch {
-      setRetryNotice("Something went wrong while retrying. Check history before trying again.")
+      setRetryNotice(t("messages.errorRetry"))
     } finally {
       setRetryingId(null)
     }
@@ -169,36 +260,51 @@ function HistorySection({ isAdmin }: { isAdmin: boolean }) {
       <div className="mb-4 flex flex-wrap gap-4">
         <select
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
+          onChange={(e) => {
+            setLoading(true)
+            setError(null)
+            setTypeFilter(e.target.value)
+          }}
           className="rounded border px-3 py-2 text-sm"
         >
-          <option value="all">All Types</option>
-          <option value="renewal">Renewal</option>
-          <option value="birthday">Birthday</option>
-          <option value="broadcast">Broadcast</option>
+          <option value="all">{t("messages.allTypes")}</option>
+          <option value="renewal">{t("messages.typeRenewal")}</option>
+          <option value="birthday">{t("messages.typeBirthday")}</option>
+          <option value="broadcast">{t("messages.typeBroadcast")}</option>
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => {
+            setLoading(true)
+            setError(null)
+            setStatusFilter(e.target.value)
+          }}
           className="rounded border px-3 py-2 text-sm"
         >
-          <option value="all">All Status</option>
-          <option value="sent">Provider accepted</option>
-          <option value="failed">Dispatch failed</option>
-          <option value="skipped">Skipped</option>
-          <option value="pending">Pending</option>
+          <option value="all">{t("messages.allStatus")}</option>
+          <option value="sent">{t("messages.providerAccepted")}</option>
+          <option value="failed">{t("messages.dispatchFailed")}</option>
+          <option value="skipped">{t("messages.statusSkipped")}</option>
+          <option value="pending">{t("messages.statusPending")}</option>
+          <option value="canceled">{t("messages.statusCanceled")}</option>
         </select>
         <select
           value={deliveryFilter}
-          onChange={(e) => setDeliveryFilter(e.target.value)}
+          onChange={(e) => {
+            setLoading(true)
+            setError(null)
+            setDeliveryFilter(e.target.value)
+          }}
           className="rounded border px-3 py-2 text-sm"
         >
-          <option value="all">All Delivery</option>
-          <option value="queued">Queued</option>
-          <option value="sent">Sent</option>
-          <option value="delivered">Delivered</option>
-          <option value="undelivered">Undelivered</option>
-          <option value="failed">Failed</option>
+          <option value="all">{t("messages.allDelivery")}</option>
+          <option value="queued">{t("messages.statusQueued")}</option>
+          <option value="sent">{t("messages.statusSent")}</option>
+          <option value="delivered">{t("messages.statusDelivered")}</option>
+          <option value="read">{t("messages.statusRead")}</option>
+          <option value="undelivered">{t("messages.statusUndelivered")}</option>
+          <option value="failed">{t("messages.statusFailed")}</option>
+          <option value="canceled">{t("messages.statusCanceled")}</option>
         </select>
       </div>
 
@@ -206,7 +312,7 @@ function HistorySection({ isAdmin }: { isAdmin: boolean }) {
         <div className="mb-4 space-y-3">
           <Notice variant="error">{error}</Notice>
           <Button variant="outline" onClick={fetch} disabled={loading}>
-            Retry
+            {t("messages.retry")}
           </Button>
         </div>
       )}
@@ -217,26 +323,26 @@ function HistorySection({ isAdmin }: { isAdmin: boolean }) {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>
-          Loading messages...
+          {t("messages.loading")}
         </div>
       ) : messages.length === 0 ? (
         <EmptyState
           icon={Mail}
-          title="No messages found"
-          description="Messages will appear here after you send your first broadcast, renewal, or birthday greeting."
+          title={t("messages.empty")}
+          description={t("messages.emptyDescription")}
         />
       ) : (
         <>
           <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-gray-50 text-left">
-                  <th className="px-4 py-3 font-medium">Date</th>
-                  <th className="px-4 py-3 font-medium">Type</th>
-                  <th className="px-4 py-3 font-medium">Customer</th>
-                  <th className="px-4 py-3 font-medium">Mobile</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Delivery</th>
+                <tr className="border-b bg-gray-50 text-start">
+                  <th className="px-4 py-3 font-medium">{t("messages.date")}</th>
+                  <th className="px-4 py-3 font-medium">{t("messages.type")}</th>
+                  <th className="px-4 py-3 font-medium">{t("messages.customer")}</th>
+                  <th className="px-4 py-3 font-medium">{t("messages.mobile")}</th>
+                  <th className="px-4 py-3 font-medium">{t("messages.status")}</th>
+                  <th className="px-4 py-3 font-medium">{t("messages.delivery")}</th>
                   <th className="w-10 px-4 py-3"></th>
                 </tr>
               </thead>
@@ -263,7 +369,7 @@ function HistorySection({ isAdmin }: { isAdmin: boolean }) {
                 onClick={loadMore}
                 disabled={loadingMore}
               >
-                {loadingMore ? "Loading..." : "Load More"}
+                {loadingMore ? t("messages.loadingMore") : t("messages.loadMore")}
               </Button>
             </div>
           )}
@@ -288,6 +394,9 @@ function HistoryRow({
   retrying: boolean
   onRetry: () => void
 }) {
+  const { locale, t } = useLanguage()
+  const localeTag = locale === "ar" ? "ar-OM" : "en-GB"
+
   return (
     <>
       <tr
@@ -295,20 +404,20 @@ function HistoryRow({
         className="cursor-pointer border-b last:border-0 hover:bg-gray-50"
       >
         <td className="whitespace-nowrap px-4 py-3 text-gray-600">
-          {new Date(m.created_at).toLocaleString()}
+          {new Date(m.created_at).toLocaleString(localeTag)}
         </td>
-        <td className="px-4 py-3 capitalize">{m.message_type}</td>
+        <td className="px-4 py-3">{translateMessageType(m.message_type, t)}</td>
         <td className="px-4 py-3 font-medium">{m.customer_name ?? "-"}</td>
         <td className="px-4 py-3 font-mono text-xs">{m.recipient_mobile}</td>
         <td className="px-4 py-3">
           <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(m.status)}`}>
-            {m.status}
+            {translateStatus(m.status, t)}
           </span>
         </td>
         <td className="px-4 py-3">
           {m.delivery_status ? (
             <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(m.delivery_status)}`}>
-              {m.delivery_status}
+              {translateStatus(m.delivery_status, t)}
             </span>
           ) : (
             <span className="text-xs text-gray-400">-</span>
@@ -328,27 +437,35 @@ function HistoryRow({
           <td colSpan={7} className="border-b bg-gray-50 px-4 py-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <span className="mb-1 block text-xs font-medium text-gray-500 uppercase tracking-wider">Message Body</span>
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">{t("messages.body")}</span>
                 <pre className="whitespace-pre-wrap rounded bg-white border p-3 text-sm font-mono">{m.message_body}</pre>
               </div>
               <div>
-                <span className="mb-1 block text-xs font-medium text-gray-500 uppercase tracking-wider">Provider Message ID</span>
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">{t("messages.providerId")}</span>
                 <p className="font-mono text-xs text-gray-700 break-all">{m.provider_message_id ?? "-"}</p>
               </div>
               <div>
-                <span className="mb-1 block text-xs font-medium text-gray-500 uppercase tracking-wider">Template Used</span>
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">{t("messages.templateUsed")}</span>
                 <p className="text-sm text-gray-700">{m.template_used ?? "-"}</p>
               </div>
               <div>
-                <span className="mb-1 block text-xs font-medium text-gray-500 uppercase tracking-wider">Sent At</span>
-                <p className="text-sm text-gray-700">{m.sent_at ? new Date(m.sent_at).toLocaleString() : "-"}</p>
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">{t("messages.sentAt")}</span>
+                <p className="text-sm text-gray-700">{m.sent_at ? new Date(m.sent_at).toLocaleString(localeTag) : "-"}</p>
               </div>
               <div>
-                <span className="mb-1 block text-xs font-medium text-gray-500 uppercase tracking-wider">Reminder Stage</span>
-                <p className="text-sm text-gray-700">{m.reminder_stage != null ? `${m.reminder_stage} days` : "-"}</p>
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">{t("messages.reminderStage")}</span>
+                <p className="text-sm text-gray-700">{m.reminder_stage != null ? t("messages.days", { count: m.reminder_stage }) : "-"}</p>
+              </div>
+              <div>
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">{t("messages.estimatedCost")}</span>
+                <p className="text-sm text-gray-700">{m.estimated_cost_baisa == null ? "-" : `${(m.estimated_cost_baisa / 1000).toFixed(3)} ${m.cost_currency ?? "OMR"}`}</p>
+              </div>
+              <div>
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">{t("messages.actualCost")}</span>
+                <p className="text-sm text-gray-700">{m.actual_cost_baisa == null ? "-" : `${(m.actual_cost_baisa / 1000).toFixed(3)} ${m.cost_currency ?? "OMR"}`}</p>
               </div>
               <div className="sm:col-span-2">
-                <span className="mb-1 block text-xs font-medium text-gray-500 uppercase tracking-wider">Failure Reason</span>
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">{t("messages.failureReason")}</span>
                 <p className="text-sm text-red-600">{m.failure_reason ?? "-"}</p>
               </div>
               {canRetry && (
@@ -361,7 +478,7 @@ function HistoryRow({
                       onRetry()
                     }}
                   >
-                    {retrying ? "Retrying..." : "Retry message"}
+                    {retrying ? t("messages.retrying") : t("messages.retryMessage")}
                   </Button>
                 </div>
               )}
@@ -376,6 +493,7 @@ function HistoryRow({
 // ─── Renewal ────────────────────────────────────────────────
 
 function RenewalSection() {
+  const { t } = useLanguage()
   const DAY_OPTIONS = [7, 14, 30]
   const [days, setDays] = useState(30)
   const [preview, setPreview] = useState<PreviewResult | null>(null)
@@ -392,7 +510,7 @@ function RenewalSection() {
     try {
       setPreview(await previewRenewal(days))
     } catch {
-      setActionError("Something went wrong while preparing the preview. Please try again.")
+      setActionError(t("messages.errorPreview"))
     } finally {
       setLoading(false)
     }
@@ -405,7 +523,7 @@ function RenewalSection() {
       setResult(await confirmRenewal(days))
       setPreview(null)
     } catch {
-      setActionError("Something went wrong while sending. Check History before retrying — some messages may already have been sent.")
+      setActionError(t("messages.errorSendUncertain"))
     } finally {
       setSending(false)
     }
@@ -414,11 +532,11 @@ function RenewalSection() {
   return (
     <div>
       <p className="mb-4 text-sm text-gray-500">
-        Select a reminder day to see eligible customers and send renewal reminders.
+        {t("messages.renewalDescription")}
       </p>
 
       <div className="mb-4 flex items-center gap-3">
-        <label className="text-sm font-medium">Reminder Day:</label>
+        <label className="text-sm font-medium">{t("messages.reminderDay")}</label>
         {DAY_OPTIONS.map((d) => (
           <button
             key={d}
@@ -427,7 +545,7 @@ function RenewalSection() {
               days === d ? "bg-blue-600 text-white" : "border hover:bg-gray-100"
             }`}
           >
-            {d} days
+            {t("messages.days", { count: d })}
           </button>
         ))}
       </div>
@@ -436,21 +554,21 @@ function RenewalSection() {
         onClick={handlePreview}
         disabled={loading}
       >
-        {loading ? "Previewing..." : "Preview"}
+        {loading ? t("messages.previewing") : t("messages.preview")}
       </Button>
 
       {preview && (
         <div className="mt-4 rounded-lg border bg-card shadow-sm p-6">
           {preview.error ? (
-            <p className="text-sm text-red-600">{preview.error}</p>
+            <p className="text-sm text-red-600">{translateMessageError(preview.error, t)}</p>
           ) : preview.count === 0 ? (
-            <EmptyState icon={Users} title="No eligible customers" description="for this reminder day." />
+            <EmptyState icon={Users} title={t("messages.noEligible")} description={t("messages.noEligibleDay")} />
           ) : (
             <>
-              <p className="mb-3 text-sm font-medium">{preview.count} customer(s) will receive a reminder.</p>
+              <p className="mb-3 text-sm font-medium">{t("messages.renewalRecipients", { count: preview.count })}</p>
               {preview.sample.length > 0 && (
                 <div className="mb-4 space-y-2">
-                  <p className="text-xs text-gray-500">Sample messages:</p>
+                  <p className="text-xs text-gray-500">{t("messages.sampleMessages")}</p>
                   {preview.sample.map((s, i) => (
                     <div key={i} className="rounded bg-gray-50 p-3">
                       <p className="text-xs text-gray-500 font-mono mb-1">{s.mobile}</p>
@@ -463,7 +581,7 @@ function RenewalSection() {
                 onClick={handleConfirm}
                 disabled={sending}
               >
-                {sending ? "Sending..." : `Confirm Send (${preview.count})`}
+                {sending ? t("messages.sending") : t("messages.confirmSend", { count: preview.count })}
               </Button>
             </>
           )}
@@ -479,8 +597,12 @@ function RenewalSection() {
       {result && (
         <Notice variant={result.success ? "success" : "error"} className="mt-4">
           {result.success
-            ? `${result.sent} renewal message(s) sent. ${result.failed ?? 0} failed. ${result.skipped} skipped (already sent).`
-            : result.error}
+            ? t("messages.renewalResult", {
+              sent: result.sent,
+              failed: result.failed ?? 0,
+              skipped: result.skipped,
+            })
+            : translateMessageError(result.error, t)}
         </Notice>
       )}
     </div>
@@ -490,6 +612,7 @@ function RenewalSection() {
 // ─── Birthday ───────────────────────────────────────────────
 
 function BirthdaySection() {
+  const { t } = useLanguage()
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
@@ -504,7 +627,7 @@ function BirthdaySection() {
     try {
       setPreview(await previewBirthdays())
     } catch {
-      setActionError("Something went wrong while preparing the preview. Please try again.")
+      setActionError(t("messages.errorPreview"))
     } finally {
       setLoading(false)
     }
@@ -517,7 +640,7 @@ function BirthdaySection() {
       setResult(await confirmBirthdays())
       setPreview(null)
     } catch {
-      setActionError("Something went wrong while sending. Check History before retrying — some messages may already have been sent.")
+      setActionError(t("messages.errorSendUncertain"))
     } finally {
       setSending(false)
     }
@@ -526,28 +649,28 @@ function BirthdaySection() {
   return (
     <div>
       <p className="mb-4 text-sm text-gray-500">
-        Send birthday greetings to customers celebrating today.
+        {t("messages.birthdayDescription")}
       </p>
 
       <Button
         onClick={handlePreview}
         disabled={loading}
       >
-        {loading ? "Previewing..." : "Preview"}
+        {loading ? t("messages.previewing") : t("messages.preview")}
       </Button>
 
       {preview && (
         <div className="mt-4 rounded-lg border bg-card shadow-sm p-6">
           {preview.error ? (
-            <p className="text-sm text-red-600">{preview.error}</p>
+            <p className="text-sm text-red-600">{translateMessageError(preview.error, t)}</p>
           ) : preview.count === 0 ? (
-            <EmptyState icon={CalendarDays} title="No birthdays today" />
+            <EmptyState icon={CalendarDays} title={t("messages.noBirthdays")} />
           ) : (
             <>
-              <p className="mb-3 text-sm font-medium">{preview.count} customer(s) will receive a birthday greeting.</p>
+              <p className="mb-3 text-sm font-medium">{t("messages.birthdayRecipients", { count: preview.count })}</p>
               {preview.sample.length > 0 && (
                 <div className="mb-4 space-y-2">
-                  <p className="text-xs text-gray-500">Sample messages:</p>
+                  <p className="text-xs text-gray-500">{t("messages.sampleMessages")}</p>
                   {preview.sample.map((s, i) => (
                     <div key={i} className="rounded bg-gray-50 p-3">
                       <p className="text-xs text-gray-500 font-mono mb-1">{s.mobile}</p>
@@ -560,7 +683,7 @@ function BirthdaySection() {
                 onClick={handleConfirm}
                 disabled={sending}
               >
-                {sending ? "Sending..." : `Confirm Send (${preview.count})`}
+                {sending ? t("messages.sending") : t("messages.confirmSend", { count: preview.count })}
               </Button>
             </>
           )}
@@ -575,7 +698,9 @@ function BirthdaySection() {
 
       {result && (
         <Notice variant={result.success ? "success" : "error"} className="mt-4">
-          {result.success ? `${result.sent} birthday message(s) sent. ${result.failed ?? 0} failed.` : result.error}
+          {result.success
+            ? t("messages.birthdayResult", { sent: result.sent, failed: result.failed ?? 0 })
+            : translateMessageError(result.error, t)}
         </Notice>
       )}
     </div>

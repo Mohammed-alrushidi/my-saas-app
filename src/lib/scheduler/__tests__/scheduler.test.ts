@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { runScheduler, addDaysToDate } from "../run"
+import { runScheduler, addDaysToDate, isBirthdayDispatchDue } from "../run"
+
+const BIRTHDAY_CONTENT_SID = `HX${"a".repeat(32)}`
 
 const messagingMocks = vi.hoisted(() => ({
   getProvider: vi.fn(),
@@ -29,6 +31,21 @@ const mockChain: Record<string, ReturnType<typeof vi.fn>> = {
   single: vi.fn(() => Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue)),
   maybeSingle: vi.fn(() => Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue)),
   insert: vi.fn(() => Promise.resolve(mockResponseQueue.shift() ?? { error: null })),
+  rpc: vi.fn((_name: string, args: Record<string, unknown>) => {
+    const response = mockResponseQueue.shift() as { data?: unknown; error?: { code?: string; message?: string } | null } | undefined
+    if (response?.error?.code === "23505") {
+      return Promise.resolve({ data: [{ outcome: "duplicate" }], error: null })
+    }
+    if (response?.error) return Promise.resolve(response)
+    if (response?.data) return Promise.resolve(response)
+    return Promise.resolve({
+      data: [{
+        outcome: "claimed",
+        idempotency_key: `birthday:${args.p_company_id}:${args.p_recipient_mobile}:${args.p_birthday_year}`,
+      }],
+      error: null,
+    })
+  }),
   update: vi.fn(() => mockFinalizeChain),
   then: vi.fn((onfulfilled: (value: unknown) => unknown) =>
     Promise.resolve(mockResponseQueue.shift() ?? mockResolveValue).then(onfulfilled)),
@@ -55,6 +72,7 @@ vi.mock("@/lib/messaging/send", () => ({
 }))
 
 beforeEach(() => {
+  process.env.BIRTHDAY_LIVE_SEND_ENABLED = "true"
   mockResponseQueue = []
   mockFinalizeQueue = []
   mockResolveValue = { data: null, error: null }
@@ -71,6 +89,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  delete process.env.BIRTHDAY_LIVE_SEND_ENABLED
   vi.useRealTimers()
 })
 
@@ -92,7 +111,36 @@ describe("addDaysToDate", () => {
   })
 })
 
+describe("isBirthdayDispatchDue", () => {
+  it("uses the Muscat company time in a bounded scheduler window", () => {
+    const now = new Date("2026-06-19T05:05:00.000Z") // 09:05 Asia/Muscat
+    expect(isBirthdayDispatchDue("09:00", "Asia/Muscat", now)).toBe(true)
+    expect(isBirthdayDispatchDue("08:00", "Asia/Muscat", now)).toBe(false)
+  })
+
+  it("fails closed for unsupported timezones", () => {
+    expect(isBirthdayDispatchDue("09:00", "UTC", new Date("2026-06-19T09:00:00Z"))).toBe(false)
+  })
+})
+
 describe("runScheduler", () => {
+  it("keeps real birthday dispatch behind the separate pre-live environment gate", async () => {
+    delete process.env.BIRTHDAY_LIVE_SEND_ENABLED
+    mockResponseQueue.push(
+      { data: [{ id: "c1", name: "Birthday Co" }], error: null },
+      { data: { reminder_days: [14], is_active: true }, error: null },
+      { data: null, error: null },
+      { data: { is_enabled: true, template_id: "birthday-template", send_time: null, timezone: "Asia/Muscat" }, error: null },
+    )
+
+    const result = await runScheduler()
+
+    expect(result.birthdaySent).toBe(0)
+    expect(mockChain.rpc).not.toHaveBeenCalled()
+    expect(messagingMocks.sendMessages).not.toHaveBeenCalled()
+    process.env.BIRTHDAY_LIVE_SEND_ENABLED = "true"
+  })
+
   it("returns zero when no active companies exist", async () => {
     mockResponseQueue.push({ data: [], error: null })
 
@@ -102,6 +150,7 @@ describe("runScheduler", () => {
     expect(result.renewalSent).toBe(0)
     expect(result.birthdaySent).toBe(0)
     expect(result.errors).toHaveLength(0)
+    expect(mockChain.eq).toHaveBeenCalledWith("is_active", true)
   })
 
   it("fails before any claim or provider call when provider configuration is invalid", async () => {
@@ -248,22 +297,53 @@ describe("runScheduler", () => {
       { data: [{ id: "c1", name: "Birthday Co" }], error: null },
       { data: { reminder_days: [14], is_active: true }, error: null },
       { data: null, error: null },
-      { data: { body: "Happy Birthday {{customer_name}}!", name: "Birthday" }, error: null },
+      { data: { is_enabled: true, template_id: "birthday-template", send_time: null, timezone: "Asia/Muscat" }, error: null },
+      { data: { id: "birthday-template", body: "Happy Birthday {{customer_name}}!", name: "Birthday", provider_template_id: BIRTHDAY_CONTENT_SID, estimated_unit_cost_baisa: 50 }, error: null },
       { data: [{ id: "b1", customer_name: "Fatima", mobile_no: "+968222", driver_dob: "2000-06-19" }], error: null },
       { data: [], error: null },
       { error: null },
+      { data: { is_enabled: true }, error: null },
     )
 
     const result = await runScheduler()
 
     expect(result.birthdaySent).toBe(1)
     expect(result.errors).toHaveLength(0)
-    expect(mockChain.insert).toHaveBeenCalledTimes(1)
-    const inserted = mockChain.insert.mock.calls[0][0]
-    expect(inserted.customer_record_id).toBe("b1")
-    expect(inserted.message_type).toBe("birthday")
-    expect(inserted.status).toBe("pending")
-    expect(inserted.idempotency_key).toBe("scheduler:birthday:c1:b1:2026-06-19")
+    expect(mockChain.rpc).toHaveBeenCalledTimes(1)
+    const [, claim] = mockChain.rpc.mock.calls[0]
+    expect(claim.p_customer_record_id).toBe("b1")
+    expect(claim.p_company_id).toBe("c1")
+    expect(claim.p_dispatch_source).toBe("automatic")
+    expect(claim.p_birthday_year).toBe(2026)
+    expect(messagingMocks.sendMessages).toHaveBeenCalledWith([expect.objectContaining({
+      mobile: "+968222",
+      template: {
+        contentSid: BIRTHDAY_CONTENT_SID,
+        variables: { "1": "Fatima", "2": "Birthday Co" },
+      },
+    })])
+  })
+
+  it("cancels a reserved birthday when automation is disabled before provider dispatch", async () => {
+    mockResponseQueue.push(
+      { data: [{ id: "c1", name: "Birthday Co" }], error: null },
+      { data: { reminder_days: [14], is_active: true }, error: null },
+      { data: null, error: null },
+      { data: { is_enabled: true, template_id: "birthday-template", send_time: null, timezone: "Asia/Muscat" }, error: null },
+      { data: { id: "birthday-template", body: "Happy Birthday {{customer_name}}!", name: "Birthday", provider_template_id: BIRTHDAY_CONTENT_SID, estimated_unit_cost_baisa: 50 }, error: null },
+      { data: [{ id: "b1", customer_name: "Fatima", mobile_no: "+96891111111", driver_dob: "2000-06-19", communication_status: "allowed" }], error: null },
+      { data: [], error: null },
+      { error: null },
+      { data: { is_enabled: false }, error: null },
+    )
+
+    const result = await runScheduler()
+
+    expect(result.birthdaySent).toBe(0)
+    expect(messagingMocks.sendMessages).not.toHaveBeenCalled()
+    expect(mockChain.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: "canceled",
+    }))
   })
 
   it("dedup: old message from another day does not block today's run", async () => {
@@ -316,10 +396,12 @@ describe("runScheduler", () => {
       { data: [{ id: "c1", name: "No Template Co" }], error: null },
       { data: { reminder_days: [14], is_active: true }, error: null },
       { data: null, error: null },
-      { data: { body: "Happy Birthday!", name: "Birthday" }, error: null },
+      { data: { is_enabled: true, template_id: "birthday-template", send_time: null, timezone: "Asia/Muscat" }, error: null },
+      { data: { id: "birthday-template", body: "Happy Birthday!", name: "Birthday", provider_template_id: BIRTHDAY_CONTENT_SID, estimated_unit_cost_baisa: 50 }, error: null },
       { data: [{ id: "b1", customer_name: "Fatima", mobile_no: "+968222", driver_dob: "2000-06-19" }], error: null },
       { data: [], error: null },
       { error: null },
+      { data: { is_enabled: true }, error: null },
     )
 
     const result = await runScheduler()
@@ -338,6 +420,20 @@ describe("runScheduler", () => {
 
     expect(result.companiesProcessed).toBe(1)
     expect(result.renewalSent).toBe(0)
+    expect(result.birthdaySent).toBe(0)
+    expect(mockChain.insert).not.toHaveBeenCalled()
+  })
+
+  it("keeps birthday automation disabled unless the independent setting is enabled", async () => {
+    mockResponseQueue.push(
+      { data: [{ id: "c1", name: "Manual Birthday Co" }], error: null },
+      { data: { reminder_days: [14], is_active: true }, error: null },
+      { data: null, error: null },
+      { data: { is_enabled: false, template_id: null }, error: null },
+    )
+
+    const result = await runScheduler()
+
     expect(result.birthdaySent).toBe(0)
     expect(mockChain.insert).not.toHaveBeenCalled()
   })
@@ -401,7 +497,8 @@ describe("scheduler durable idempotency", () => {
 
   /**
    * Helper: push a standard birthday run (1 company, 1 customer) into the mock queue.
-   * Consumes 7 items: companies, settings, renewal-template-null, birthday-template, allCustomers, existing, insert.
+   * Consumes 8 items: companies, reminder settings, renewal-template-null,
+   * birthday automation settings, birthday template, allCustomers, existing, insert.
    */
   function pushBirthdayRun(
     overrides?: { insertResult?: unknown; companyId?: string; custId?: string },
@@ -411,10 +508,12 @@ describe("scheduler durable idempotency", () => {
       { data: [{ id: companyId, name: "Birthday Co" }], error: null },
       { data: { reminder_days: [14], is_active: true }, error: null },
       { data: null, error: null },
-      { data: { body: "Happy Birthday {{customer_name}}!", name: "Birthday" }, error: null },
+      { data: { is_enabled: true, template_id: "birthday-template", send_time: null, timezone: "Asia/Muscat" }, error: null },
+      { data: { id: "birthday-template", body: "Happy Birthday {{customer_name}}!", name: "Birthday", provider_template_id: BIRTHDAY_CONTENT_SID, estimated_unit_cost_baisa: 50 }, error: null },
       { data: [{ id: custId, customer_name: "Fatima", mobile_no: "+968222", driver_dob: "2000-06-19" }], error: null },
       { data: [], error: null },
       insertResult,
+      { data: { is_enabled: true }, error: null },
     )
   }
 

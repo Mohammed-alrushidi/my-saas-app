@@ -167,6 +167,15 @@ This project currently uses the **Twilio WhatsApp Sandbox** for development.
 4. **Pre-approved message templates** for each message type (renewal, birthday, broadcast)
 5. Update `TWILIO_WHATSAPP_NUMBER` to your production WABA number
 
+**Before enabling live birthday sends:**
+- [ ] Back up production and apply migration `00020_birthday_automation_controls.sql` through the separately approved migration procedure
+- [ ] Verify `claim_birthday_message` has `EXECUTE` only for `service_role`, not `PUBLIC`, `anon`, or `authenticated`
+- [ ] Verify `anon` and `authenticated` cannot insert or update provider approval metadata on `message_templates`; only the trusted provider-sync/service-role path may manage those columns
+- [ ] Configure the approved Twilio Marketing template ID and confirm its provider status
+- [ ] Verify usage aggregation and final estimated-versus-actual cost reconciliation
+- [ ] Re-run the tenant, STOP, duplicate, limit, budget, and concurrent-reservation postflight checks
+- [ ] Obtain separate approval before enabling the birthday live-send environment gate
+
 **Status:** Production WABA is **postponed** until the above steps are completed.
 
 ---

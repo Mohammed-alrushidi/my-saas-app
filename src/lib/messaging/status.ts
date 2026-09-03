@@ -1,4 +1,4 @@
-export const DELIVERY_STATUSES = ["queued", "sent", "delivered", "undelivered", "failed"] as const
+export const DELIVERY_STATUSES = ["queued", "sent", "delivered", "read", "undelivered", "failed", "canceled"] as const
 
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number]
 
@@ -11,10 +11,10 @@ const TWILIO_STATUS_MAP: Record<string, DeliveryStatus> = {
   sending: "queued",
   sent: "sent",
   delivered: "delivered",
-  read: "delivered",
+  read: "read",
   undelivered: "undelivered",
   failed: "failed",
-  canceled: "failed",
+  canceled: "canceled",
 }
 
 export function mapTwilioStatus(raw: string): DeliveryStatus | null {
@@ -25,8 +25,10 @@ const ALLOWED_PREVIOUS: Record<DeliveryStatus, readonly ("null" | DeliveryStatus
   queued: ["null"],
   sent: ["null", "queued"],
   delivered: ["null", "queued", "sent"],
+  read: ["null", "queued", "sent", "delivered"],
   undelivered: ["null", "queued", "sent"],
   failed: ["null", "queued", "sent"],
+  canceled: ["null", "queued"],
 }
 
 function predecessorFilter(next: DeliveryStatus): string {

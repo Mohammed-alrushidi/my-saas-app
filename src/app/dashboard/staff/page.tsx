@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useLanguage } from "@/components/language-provider"
 
 type PendingStaffAction = {
   type: "deactivate" | "activate"
@@ -18,6 +19,7 @@ type PendingStaffAction = {
 }
 
 export default function StaffPage() {
+  const { locale, t } = useLanguage()
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [grantsByStaff, setGrantsByStaff] = useState<Record<string, StaffPermissionGrant[]>>({})
   const [loading, setLoading] = useState(true)
@@ -39,11 +41,11 @@ export default function StaffPage() {
       }
       setGrantsByStaff(map)
     } catch {
-      setNotification({ type: "error", message: "Failed to load staff. Please refresh the page." })
+      setNotification({ type: "error", message: t("staff.loadFailed") })
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => { refreshData() }, [refreshData])
 
@@ -55,13 +57,13 @@ export default function StaffPage() {
       if (result.success) {
         setEmail("")
         setFullName("")
-        setNotification({ type: "success", message: "Invitation sent. The staff member will receive an email to set their password." })
+        setNotification({ type: "success", message: t("staff.inviteSent") })
         refreshData()
       } else {
-        setNotification({ type: "error", message: result.error ?? "Failed to invite" })
+        setNotification({ type: "error", message: result.error ?? t("staff.inviteFailed") })
       }
     } catch {
-      setNotification({ type: "error", message: "Something went wrong. Please try again." })
+      setNotification({ type: "error", message: t("staff.genericFailed") })
     } finally {
       setInviting(false)
     }
@@ -82,17 +84,17 @@ export default function StaffPage() {
     try {
       const result = type === "deactivate" ? await deactivateStaff(userId) : await activateStaff(userId)
       if (result.success) {
-        setNotification({ type: "success", message: type === "deactivate" ? "Staff deactivated" : "Staff reactivated" })
+        setNotification({ type: "success", message: type === "deactivate" ? t("staff.deactivated") : t("staff.reactivated") })
         setPendingAction(null)
         refreshData()
       } else {
         setNotification({
           type: "error",
-          message: result.error ?? (type === "deactivate" ? "Failed to deactivate" : "Failed to reactivate"),
+          message: result.error ?? (type === "deactivate" ? t("staff.deactivateFailed") : t("staff.reactivateFailed")),
         })
       }
     } catch {
-      setNotification({ type: "error", message: "Something went wrong. Please try again." })
+      setNotification({ type: "error", message: t("staff.genericFailed") })
     } finally {
       setActing(false)
     }
@@ -101,8 +103,8 @@ export default function StaffPage() {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Staff Management</h1>
-        <p className="text-sm text-muted-foreground">Invite and manage staff members in your company.</p>
+        <h1 className="text-2xl font-bold">{t("staff.title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("staff.description")}</p>
       </div>
 
       {notification && (
@@ -117,10 +119,10 @@ export default function StaffPage() {
       )}
 
       <div className="mb-8 rounded-lg border bg-card shadow-sm p-6">
-        <h2 className="mb-3 text-lg font-semibold">Invite Staff</h2>
+        <h2 className="mb-3 text-lg font-semibold">{t("staff.inviteTitle")}</h2>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1">
-            <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">{t("staff.email")}</label>
             <input
               type="email"
               value={email}
@@ -130,12 +132,12 @@ export default function StaffPage() {
             />
           </div>
           <div className="flex-1">
-            <label className="mb-1 block text-sm font-medium text-gray-700">Full Name</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">{t("staff.fullName")}</label>
             <input
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="John Doe"
+              placeholder={t("staff.namePlaceholder")}
               className="w-full rounded border px-3 py-2 text-sm"
             />
           </div>
@@ -143,28 +145,28 @@ export default function StaffPage() {
             onClick={handleInvite}
             disabled={inviting || !email.trim() || !fullName.trim()}
           >
-            {inviting ? "Inviting..." : "Send Invite"}
+            {inviting ? t("staff.inviting") : t("staff.sendInvite")}
           </Button>
         </div>
       </div>
 
       {loading ? (
-        <div className="p-6 text-sm text-gray-500">Loading...</div>
+        <div className="p-6 text-sm text-gray-500">{t("common.loading")}</div>
       ) : staff.length === 0 ? (
         <div className="rounded-lg border bg-card">
-          <EmptyState icon={Users} title="No staff members yet" description="Invite your first staff member above." />
+          <EmptyState icon={Users} title={t("staff.empty")} description={t("staff.emptyDescription")} />
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-gray-50 text-left">
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">الصلاحيات النشطة</th>
-                <th className="px-4 py-3 font-medium">Invited</th>
-                <th className="px-4 py-3 font-medium">إدارة الحساب</th>
+              <tr className="border-b bg-gray-50 text-start">
+                <th className="px-4 py-3 font-medium">{t("staff.name")}</th>
+                <th className="px-4 py-3 font-medium">{t("staff.email")}</th>
+                <th className="px-4 py-3 font-medium">{t("staff.status")}</th>
+                <th className="px-4 py-3 font-medium">{t("staff.permissions")}</th>
+                <th className="px-4 py-3 font-medium">{t("staff.invited")}</th>
+                <th className="px-4 py-3 font-medium">{t("staff.account")}</th>
               </tr>
             </thead>
             <tbody>
@@ -180,7 +182,7 @@ export default function StaffPage() {
                           : "bg-gray-100 text-gray-600"
                       }`}
                     >
-                      {s.is_active ? "Active" : "Inactive"}
+                      {s.is_active ? t("staff.active") : t("staff.inactive")}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -192,16 +194,16 @@ export default function StaffPage() {
                     />
                   </td>
                   <td className="px-4 py-3 text-gray-600">
-                    {new Date(s.created_at).toLocaleDateString()}
+                    {new Date(s.created_at).toLocaleDateString(locale === "ar" ? "ar-OM" : "en-GB")}
                   </td>
                   <td className="px-4 py-3">
                     {s.is_active ? (
                       <Button variant="destructive" size="sm" onClick={() => requestDeactivate(s.id, s.full_name ?? s.email ?? "")}>
-                        تعطيل الموظف
+                        {t("staff.deactivate")}
                       </Button>
                     ) : (
                       <Button variant="ghost" size="sm" onClick={() => requestActivate(s.id, s.full_name ?? s.email ?? "")}>
-                        إعادة التفعيل
+                        {t("staff.reactivate")}
                       </Button>
                     )}
                   </td>
@@ -214,15 +216,15 @@ export default function StaffPage() {
 
       <ConfirmDialog
         open={pendingAction !== null}
-        title={pendingAction?.type === "activate" ? "إعادة تفعيل الموظف" : "تعطيل الموظف"}
+        title={pendingAction?.type === "activate" ? t("staff.reactivateTitle") : t("staff.deactivateTitle")}
         message={
           pendingAction
             ? pendingAction.type === "deactivate"
-              ? `تعطيل الموظف ${pendingAction.name}؟ سيفقد إمكانية الدخول إلى لوحة التحكم، ولن تُحذف بياناته.`
-              : `إعادة تفعيل الموظف ${pendingAction.name}؟ سيتمكن من الدخول إلى لوحة التحكم مجددًا.`
+              ? t("staff.deactivateMessage", { name: pendingAction.name })
+              : t("staff.reactivateMessage", { name: pendingAction.name })
             : ""
         }
-        confirmLabel={acting ? "جارٍ التنفيذ..." : pendingAction?.type === "activate" ? "إعادة التفعيل" : "تعطيل الموظف"}
+        confirmLabel={acting ? t("staff.working") : pendingAction?.type === "activate" ? t("staff.reactivate") : t("staff.deactivate")}
         confirmDisabled={acting}
         variant={pendingAction?.type === "deactivate" ? "danger" : "default"}
         onCancel={() => setPendingAction(null)}

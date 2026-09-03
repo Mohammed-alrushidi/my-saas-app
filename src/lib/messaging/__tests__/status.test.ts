@@ -118,10 +118,10 @@ describe("mapTwilioStatus", () => {
     expect(mapTwilioStatus("sending")).toBe("queued")
     expect(mapTwilioStatus("sent")).toBe("sent")
     expect(mapTwilioStatus("delivered")).toBe("delivered")
-    expect(mapTwilioStatus("read")).toBe("delivered")
+    expect(mapTwilioStatus("read")).toBe("read")
     expect(mapTwilioStatus("undelivered")).toBe("undelivered")
     expect(mapTwilioStatus("failed")).toBe("failed")
-    expect(mapTwilioStatus("canceled")).toBe("failed")
+    expect(mapTwilioStatus("canceled")).toBe("canceled")
   })
 
   it("is case-insensitive", () => {

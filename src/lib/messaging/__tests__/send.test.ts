@@ -63,4 +63,23 @@ describe("sendMessages", () => {
       { success: true, providerMessageId: "SM2", deliveryStatus: "queued", mobile: "+96892123457" },
     ])
   })
+
+  it("passes an approved provider template and variables without changing the recipient", async () => {
+    const template = {
+      contentSid: `HX${"a".repeat(32)}`,
+      variables: { "1": "Fatima", "2": "Birthday Co" },
+    }
+
+    await sendMessages([{
+      mobile: "92123456",
+      body: "Happy Birthday Fatima!",
+      template,
+    }])
+
+    expect(providerMocks.send).toHaveBeenCalledWith(
+      "+96892123456",
+      "Happy Birthday Fatima!",
+      template,
+    )
+  })
 })

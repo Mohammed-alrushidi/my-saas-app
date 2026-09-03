@@ -7,6 +7,7 @@ import { sendMessages } from "@/lib/messaging/send"
 import { getProvider } from "@/lib/messaging/provider"
 import { getMuscatBusinessDayBounds, muscatExpiryWindow } from "@/lib/dates/muscat-day"
 import { isBirthdayToday } from "@/lib/dates/birthday"
+import { sendBirthdayNow } from "@/app/dashboard/birthdays/actions"
 
 function renderTemplate(
   body: string,
@@ -43,6 +44,11 @@ export type MessageRecord = {
   provider_message_id: string | null
   delivery_status: string | null
   customer_name: string | null
+  dispatch_source: string | null
+  birthday_year: number | null
+  estimated_cost_baisa: number | null
+  actual_cost_baisa: number | null
+  cost_currency: string | null
 }
 
 export type PreviewResult = {
@@ -60,9 +66,9 @@ export type ConfirmResult = {
 }
 
 const HISTORY_PAGE_SIZE = 50
-const MESSAGE_STATUSES = new Set(["pending", "sent", "failed", "skipped"])
+const MESSAGE_STATUSES = new Set(["pending", "sent", "failed", "skipped", "canceled"])
 const MESSAGE_TYPES = new Set(["renewal", "birthday", "broadcast"])
-const DELIVERY_FILTERS = new Set(["queued", "sent", "delivered", "undelivered", "failed"])
+const DELIVERY_FILTERS = new Set(["queued", "sent", "delivered", "read", "undelivered", "failed", "canceled"])
 const MAX_RETRY_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000] as const
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -131,6 +137,11 @@ export async function getMessageHistory(
     provider_message_id: r.provider_message_id,
     delivery_status: r.delivery_status,
     customer_name: r.customer_records?.customer_name ?? null,
+    dispatch_source: r.dispatch_source ?? null,
+    birthday_year: r.birthday_year ?? null,
+    estimated_cost_baisa: r.estimated_cost_baisa ?? null,
+    actual_cost_baisa: r.actual_cost_baisa ?? null,
+    cost_currency: r.cost_currency ?? null,
   }))
 
   return { messages, hasMore }
@@ -518,47 +529,44 @@ export async function previewBirthdays(): Promise<PreviewResult> {
 }
 
 export async function confirmBirthdays(): Promise<ConfirmResult> {
-  const { customers, companyName, companyId, template, templateError, customerError, existingKeys, role } = await getEligibleBirthdays()
+  const { customers, companyId, template, templateError, customerError, existingKeys, role } = await getEligibleBirthdays()
   if (templateError) return { success: false, sent: 0, skipped: 0, error: templateError }
   if (customerError) return { success: false, sent: 0, skipped: 0, error: customerError }
   if (role !== "company_admin") return { success: false, sent: 0, skipped: 0, error: "Only admins can send messages" }
   if (!template) return { success: false, sent: 0, skipped: 0, error: "No birthday template found" }
 
   const supabase = await createClient()
+  const { data: automation } = await supabase
+    .from("birthday_automation_settings")
+    .select("is_enabled")
+    .eq("company_id", companyId)
+    .maybeSingle()
+  if (automation?.is_enabled) {
+    return { success: false, sent: 0, skipped: 0, error: "Manual birthday sending is disabled while automation is active" }
+  }
 
   const eligible = customers.filter((c) => !existingKeys.has(c.id))
   if (eligible.length === 0) return { success: true, sent: 0, skipped: customers.length }
 
-  const recipients = eligible.map((c) => ({
-    mobile: c.mobile_no,
-    body: renderTemplate(template.body, c, companyName),
-  }))
-
-  const results = await sendMessages(recipients)
-  const now = new Date().toISOString()
-  const messages = eligible.map((c, i) => ({
-    company_id: companyId,
-    customer_record_id: c.id,
-    message_type: "birthday" as const,
-    recipient_mobile: c.mobile_no,
-    template_used: template.name,
-    message_body: recipients[i].body,
-    status: (results[i].success ? "sent" : "failed") as "sent" | "failed",
-    provider_message_id: results[i].providerMessageId ?? null,
-    delivery_status: results[i].deliveryStatus ?? null,
-    failure_reason: results[i].error ?? null,
-    sent_at: results[i].success ? now : null,
-  }))
-
-  const { error } = await supabase.from("messages").insert(messages)
-  if (error) return { success: false, sent: 0, skipped: 0, error: error.message }
+  // Keep the legacy bulk button on the same atomic annual claim path used by
+  // the Birthdays page. This avoids provider-before-database duplicate sends.
+  let sent = 0
+  let failed = 0
+  let duplicates = 0
+  for (const customer of eligible) {
+    const outcome = await sendBirthdayNow(customer.id)
+    if (outcome.success) sent++
+    else if (outcome.state === "duplicate") duplicates++
+    else failed++
+  }
 
   revalidatePath("/dashboard/messages")
   return {
-    success: true,
-    sent: messages.filter((m) => m.status === "sent").length,
-    failed: messages.filter((m) => m.status === "failed").length,
-    skipped: customers.length - eligible.length,
+    success: failed === 0,
+    sent,
+    failed,
+    skipped: customers.length - eligible.length + duplicates,
+    error: failed > 0 ? "One or more birthday messages failed the safety gate" : undefined,
   }
 }
 
